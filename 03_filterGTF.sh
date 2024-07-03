@@ -1,6 +1,7 @@
 #!/bin/bash
 # Purpose: To filter a GTF file to keep only biotypes of interest
 # Initiate this script with "bash 03_filterGTF.sh > filterGTF.log 2>&1 &" from an Alpine shell. The "&" on the end makes the job run in the background; can check progess with "jobs -l"
+###### THIS SCRIPT SHOULD BE RUN IN THE indexBuild DIRECTORY CONTAINING THE REFERENCE GENOME FASTA AND GTF FILES ######
 
 ##### FILTER GTF FILE #####
 #load cellranger
