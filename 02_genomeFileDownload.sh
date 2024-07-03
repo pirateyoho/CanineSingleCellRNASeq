@@ -10,7 +10,7 @@ cd /scratch/alpine/$USER/project_scrna_01/indexBuild
 ##### DOWNLOAD FASTA FILE #####
 rsync -azvP rsync://ftp.ensembl.org/ensembl/pub/release-104/fasta/canis_lupus_familiaris/dna/Canis_lupus_familiaris.CanFam3.1.dna.toplevel.fa.gz .
 
-# Check md5sum of FASTA file
+# Check md5sum of FASTA file - results will be stored in the genomeDownload.log file
 rsync -avzP rsync://ftp.ensembl.org/ensembl/pub/release-104/fasta/canis_lupus_familiaris/dna/CHECKSUMS .
 grep ".dna.toplevel" CHECKSUMS
 sum Canis_lupus_familiaris.CanFam3.1.dna.toplevel.fa.gz
@@ -22,7 +22,7 @@ gunzip Canis_lupus_familiaris.CanFam3.1.dna.toplevel.fa.gz
 ##### DOWNLOAD GTF FILE #####
 rsync -avzP rsync://ftp.ensembl.org/ensembl/pub/release-104/gtf/canis_lupus_familiaris/Canis_lupus_familiaris.CanFam3.1.104.gtf.gz  .
 
-## Check md5sum of GTF file
+## Check md5sum of GTF file - results will be stored in the genomeDownload.log file
 # Acquire sums file from Ensembl
 rsync -avzP rsync://ftp.ensembl.org/ensembl/pub/release-104/gtf/canis_lupus_familiaris/CHECKSUMS  .
 grep ".104.gtf.gz" CHECKSUMS
