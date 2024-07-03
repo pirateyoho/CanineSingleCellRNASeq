@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Purpose: To run cellranger count on single-cell RNAseq fastq files
-# Designed to receive input from sbatchLoop_cellrngr_cnts.sh
-###### THIS SCRIPT SHOULD BE RUN IN THE 02_scripts DIRECTORY ######
+###### IMPORTANT: ***sbatchLoop_cellrngr_cnts.sh*** MUST be run *FIRST* as this script is designed to receive input from that script ######
+###### This script should exist in the 02_scripts directory ######
 
 #SBATCH --account=csu84_alpine1
 #SBATCH --job-name=cellrngr_cnt
