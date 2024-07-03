@@ -1,6 +1,6 @@
 # CanineSingleCellRNASeq
 ## Background
-This repository contains scripts that were used for a canine single-cell RNA-sequencing pipeline using Cell Ranger. This repository is intended for internal use by members of the Clinical Hematopathology Laboratory at Colorado State University and their collaborators.
+This repository contains scripts that were used for a canine single-cell RNA-sequencing pipeline using Cell Ranger. This repository is intended for internal use by members of the Clinical Hematopathology Laboratory at Colorado State University and their collaborators. Scripts are numbered in the order they were run.
 ## Raw data
 This pipeline utilized raw single-cell RNA-sequencing data from 3 normal canine lymph node samples and 3 normal canine thymus samples. This data is available from the Avery lab RSTOR shared drive.
 ### Thymus
