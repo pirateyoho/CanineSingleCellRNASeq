@@ -5,7 +5,7 @@ This repository contains scripts that were used for a canine single-cell RNA-seq
 Scripts are numbered in the order they were run. Scripts with the same number were run simultaneously; most often, these consist of 1) an "sbatchLoop" script designed to submit a batch job to the job scheduler for each file in a directory, and 2) the script being executed in that job.
 
 ## Acknowledgements
-Many of these scripts were modified from those provided in [a repository](https://github.com/dyammons/scrna-seq) authored by Dr. Dylan Ammos. This current repository was created for the purpose of documenting the final versions of the scripts as they were modified to fit this project.
+Many of these scripts were modified from those provided in [a repository](https://github.com/dyammons/scrna-seq) authored by Dr. Dylan Ammos. The current repository was created for the purpose of documenting the final versions of the scripts as they were modified to fit this project.
 ## Raw data
 This pipeline utilized raw single-cell RNA-sequencing data from 3 normal canine lymph node samples and 3 normal canine thymus samples. This data is available from the Avery lab RSTOR shared drive.
 ### Thymus
