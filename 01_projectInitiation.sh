@@ -1,6 +1,6 @@
 #!/bin/bash
 # Purpose: To initiate a project directory and subdirectories within a user's scratch directory on Alpine
-# Initiate this script with "bash 01_projectInitiation.sh" from an Alpine shell.
+# Initiate this script with "bash 01_projectInitiation.sh" from an Alpine shell. Can be executed from any directory.
 
 ##### INITIATE PROJECT DIRECTORY #####
 cd /scratch/alpine/$USER
