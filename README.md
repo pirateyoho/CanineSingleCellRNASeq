@@ -13,6 +13,11 @@ O:\RSTOR-Avery\221103_SCS_HarrisA\01.RawData\T165635
 O:\RSTOR-Avery\221103_SCS_HarrisA\01.RawData\L165597
 O:\RSTOR-Avery\220623_SCS_Harris\raw_data\LN157849
 O:\RSTOR-Avery\210722_SCS_Harris\LN154803
+## Pipeline overview
+1. Raw data was transferred from RStor to a scratch directory on CURC Alpine HPC with FileZilla.
+2. Reference genome FASTA and GTF files for CanFam3.1 were downloaded from Ensembl. The GTF file was filtered with cellranger mkgtf.
+3. A Cell Ranger index was built from the reference genome files.
+4. cellranger count was used to perform alignment, filtering, barcode counting, and UMI counting on the FASTQ files.
 ### Sample information
 | **Sample #**| **Patient** | **Sex**| **Breed** | **Tissue** | **Age (mos.)**|
 |:-----------:|:-----------:|:------:|:---------:|:----------:|:-------------:|
@@ -22,9 +27,3 @@ O:\RSTOR-Avery\210722_SCS_Harris\LN154803
 | 154803      | B217        | F      | MIX       | Lymph node | 9             |
 | 165635      | CO32        | F      | MIX       | Thymus     | 7             |
 | 165597      | CO32        | F      | MIX       | Lymph node | 7             |
-
-## Pipeline overview
-1. Raw data was transferred from RStor to a scratch directory on CURC Alpine HPC with FileZilla.
-2. Reference genome FASTA and GTF files for CanFam3.1 were downloaded from Ensembl. The GTF file was filtered with cellranger mkgtf.
-3. A Cell Ranger index was built from the reference genome files.
-4. cellranger count was used to perform alignment, filtering, barcode counting, and UMI counting on the FASTQ files.
