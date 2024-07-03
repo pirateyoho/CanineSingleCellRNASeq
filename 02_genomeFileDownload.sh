@@ -1,9 +1,10 @@
 #!/bin/bash
 # Purpose: To obtain reference genome FASTA and GTF files from Ensembl
 # Initiate this script with "bash 02_genomeFileDownload.sh > genomeDownload.log 2>&1 &" from an Alpine shell. The "&" on the end makes the job run in the background; can check progess with "jobs -l"
+# This script can be run from any directory
 
 ##### NAVIGATE INTO indexBuild DIRECTORY #####
-cd cd /scratch/alpine/$USER/project_scrna_01/indexBuild
+cd /scratch/alpine/$USER/project_scrna_01/indexBuild
 
 
 ##### DOWNLOAD FASTA FILE #####
