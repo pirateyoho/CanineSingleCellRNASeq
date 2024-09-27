@@ -1,6 +1,6 @@
 # CanineSingleCellRNASeq
 ## Background
-This repository contains scripts that were used for a canine single-cell RNA-sequencing pipeline using Cell Ranger. This repository is intended for internal use by members of the Clinical Hematopathology Laboratory at Colorado State University and their collaborators. 
+This repository contains scripts that were used for a canine single-cell RNA-sequencing pipeline using Cell Ranger and Seurat. This repository is intended for internal use by members of the Clinical Hematopathology Laboratory at Colorado State University and their collaborators. 
 
 Scripts are numbered in the order they were run. Scripts with the same number were run simultaneously; most often, these consist of 1) an "sbatchLoop" script designed to submit a batch job to the job scheduler for each file in a directory, and 2) the script being executed in that job.
 
