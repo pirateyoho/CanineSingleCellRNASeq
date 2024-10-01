@@ -1,0 +1,410 @@
+---
+title: "Single Cell RNASeq QC and Filtering with Seurat"
+author: "Eileen Owens"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,
+                      cache = TRUE,
+                      warning = FALSE,
+                      keep_md = TRUE)
+```
+
+# Introduction
+The purpose of this script is to perform QC and filter single-cell RNA-seq data with Seurat. Adapted from the Seurat documentation https://satijalab.org/seurat/ and the Harvard Chan Bioinformatics Core guide https://github.com/hbctraining/scRNA-seq/tree/master
+
+# Loading data and packages
+
+## Install necessary software packages (first time only):
+```{r installation, results="hide", eval=FALSE}
+if (!require("BiocManager", quietly = TRUE))
+        install.packages("BiocManager")
+BiocManager::install(version = "3.19", force=TRUE)
+
+options(BioC_mirror = "http://bioconductor.org")
+
+if (!requireNamespace("remotes", quietly = TRUE)) {
+  install.packages("remotes")
+}
+
+if (!requireNamespace("devtools", quietly = TRUE)) {
+  install.packages("devtools")
+}
+
+install.packages("Seurat")
+install.packages("tidyverse")
+install.packages("clustree")
+install.packages("stringr")
+remotes::install_github("chris-mcginnis-ucsf/DoubletFinder")
+install.packages('patchwork')
+install.packages("scales")
+install.packages("cowplot")
+install.packages("ggrepel")
+install.packages("colorspace")
+BiocManager::install("DESeq2")
+install.packages("pheatmap")
+install.packages("RColorBrewer")
+remotes::install_github("mojaveazure/seurat-disk")
+BiocManager::install("SingleR")
+install.packages("viridis")
+install.packages('reshape')
+install.packages('lemon')
+devtools::install_github("davidsjoberg/ggsankey")
+install.packages("msigdbr")
+BiocManager::install("clusterProfiler")
+install.packages("ggpubr")
+BiocManager::install("slingshot")
+BiocManager::install("scRNAseq")
+BiocManager::install("scuttle")
+install.packages('ape')
+BiocManager::install("ggtree")
+```
+
+## Load necessary software packages (every time):
+```{r software-load, results="hide", message=FALSE}
+library(Seurat)
+library(tidyverse)
+library(clustree)
+library(stringr)
+library(DoubletFinder)
+library(patchwork)
+library(scales)
+library(cowplot)
+library(ggrepel)
+library(colorspace)
+library(DESeq2)
+library(pheatmap)
+library(RColorBrewer)
+library(SeuratDisk)
+library(SingleR)
+library(viridis)
+library(reshape)
+library(lemon)
+library(ggsankey)
+library(msigdbr)
+library(clusterProfiler)
+library(slingshot)
+library(ggpubr)
+library(scRNAseq)
+library(scuttle)
+library(ape)
+library(ggtree)
+```
+
+## Set working directory
+```{r setwd}
+setwd("C:/Users/edlarsen/Documents/240828_scRNAseq")
+```
+
+## Load single-cell RNA-seq count data
+
+Input: A barcodes.tsv.gz file of all cellular barcodes present for that sample, a features.tsv.gz file containing identifiers of the quantified genes, and a matrix.mtx.gz file containing a matix of count values. These files should all be in one directory. A Seurat object should be initiated with raw (non-normalized) data.
+
+```{r loaddata-loop}
+# This loop assumes the following data structure for accessing Cell Ranger output files:
+# current working directory/
+# ├── CellRangerOuts
+#     ├── Sample1
+#         ├──filtered_feature_bc_matrix
+#           ├──barcodes.tsv.gz
+#           ├──features.tsv.gz
+#           ├──matrix.mtx.gz
+#     ├── Sample2
+#         ├──filtered_feature_bc_matrix
+#           ├──barcodes.tsv.gz
+#           ├──features.tsv.gz
+#           ├──matrix.mtx.gz
+
+
+
+# loop through all sample IDs, pull the barcodes.tsv.gz, features.tsv.gz, and matrix.mtx.gz files from their respective directories, and create a Seurat object for each with the sample ID as the project variable
+
+for (file in c("L165597", "LN154803", "LN157849", "T154802", "T165635", "Th157850")){
+  seurat_data <- Read10X(data.dir = paste("CellRangerOuts", file, "filtered_feature_bc_matrix/", sep = "/"))
+  seurat_obj <- CreateSeuratObject(counts = seurat_data,
+                                   min.cells = 3, # excludes features expressed in less than 3 cells
+                                   min.features = 100, # removes dead cells and empty droplets where few features are detected
+                                   project = file)
+  assign(file, seurat_obj)
+}
+```
+
+```{r inspectmetadata}
+# Explore the metadata of the resulting Seurat objects. 'orig.ident' contains the sample identity, 'nCount_RNA' is the number of UMIs per cell, and 'nFeature_RNA' is the number of genes detected per cell.
+head(L165597@meta.data)
+head(LN154803@meta.data)
+head(LN157849@meta.data)
+head(T154802@meta.data)
+head(T165635@meta.data)
+head(Th157850@meta.data)
+```
+
+# Merging and integrating samples
+
+## Merge all samples into one Seurat object for QC
+Merging makes it easier to run the QC steps and easily compare the data quality for all samples.
+```{r seuratmerge}
+# create merged Seurat object. 'add.cell.ids' prepends given identifier to the beginning of each cell name to easily tell which original object a particular cell came from
+merged_seurat <- merge(L165597, y = c(LN154803, LN157849, T154802, T165635, Th157850),
+                       add.cell.ids = c("L165597", "LN154803", "LN157849", "T154802", "T165635", "Th157850"))
+
+# inspect resulting merged object
+head(colnames(merged_seurat))
+tail(colnames(merged_seurat))
+table(merged_seurat$orig.ident)
+```
+
+## Merge samples by location
+
+Merge individual lymph node samples and individual thymus samples into one Seurat object for lymph node and one Seurat object for thymus, respectively, for downstream clustering and other analyses. These are the objects that will be filtered following QC.
+
+```{r merge-by-location}
+## lymph node
+merged_ln <- merge(L165597, y = c(LN154803, LN157849),
+                   add.cell.ids = c("L165597", "LN154803", "LN157849"))
+merged_ln[["RNA"]] <- JoinLayers(merged_ln[["RNA"]]) # rejoin layers after merging
+
+## thymus
+merged_thym <- merge(T154802, y = c(T165635, Th157850),
+                     add.cell.ids = c("T154802", "T165635", "Th157850"))
+merged_thym[["RNA"]] <- JoinLayers(merged_thym[["RNA"]]) # rejoin layers after merging
+```
+
+# Perform QC of raw count data
+## Add additional parameters to metadata
+```{r metadataforQC}
+# Add column of genes per UMI for each cell to object metadata
+merged_seurat[["log10GenesPerUMI"]] <- log10(merged_seurat$nFeature_RNA / log10(merged_seurat$nCount_RNA))
+merged_ln[["log10GenesPerUMI"]] <- log10(merged_ln$nFeature_RNA) / log10(merged_ln$nCount_RNA)
+merged_thym[["log10GenesPerUMI"]] <- log10(merged_thym$nFeature_RNA) / log10(merged_thym$nCount_RNA)
+
+# Add columns of mitochondrial percentage and ratio to object metadata
+merged_seurat[["percent.mt"]] <- PercentageFeatureSet(merged_seurat, pattern = "^MT-")
+merged_seurat[["mitoRatio"]] <- merged_seurat@meta.data$percent.mt / 100
+
+merged_ln[["percent.mt"]] <- PercentageFeatureSet(merged_ln, pattern = "^MT-")
+merged_ln[["mitoRatio"]] <- merged_ln@meta.data$percent.mt / 100
+
+merged_thym[["percent.mt"]] <- PercentageFeatureSet(merged_thym, pattern = "^MT-")
+merged_thym[["mitoRatio"]] <- merged_thym@meta.data$percent.mt / 100
+
+# Create metadata dataframe to add some information for QC analysis without affecting our seurat object
+metadata <- merged_seurat@meta.data
+
+# Add column with cell IDs
+metadata$cells <- rownames(metadata)
+
+# Change column names to be more intuitive
+metadata <- metadata %>%
+  dplyr::rename(sampleID = orig.ident,
+                nUMI = nCount_RNA,
+                nGene = nFeature_RNA)
+
+head(metadata)
+```
+
+## Cell counts per sample
+```{r cellCountsPerSamplePlot}
+metadata %>% 
+  	ggplot(aes(x=sampleID, fill=sampleID)) + 
+  	geom_bar() +
+    scale_y_continuous(breaks = seq(0, 20000, by = 1000)) +
+  	theme_classic() +
+  	theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  	theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  	ggtitle("Number of Cell Counts Per Sample")
+```
+
+
+## Number of UMIs (transcripts) per cell
+UMI counts per cell should generally be at least over 500, with the majority of cells having 1000 UMIs or more.  On the other hand, cell doublets/multiplets may exhibit an aberrantly high UMI count.
+
+```{r nUMIPlot1, fig.height=10, fig.width=8, warning=FALSE, message=FALSE}
+# Violin plot
+VlnPlot(merged_seurat, features = "nCount_RNA", alpha = 0.1) + scale_y_continuous(breaks = seq(0, 90000, by = 20000)) + geom_hline(yintercept = 10000)
+```
+
+
+```{r nUMIPlot2, fig.height=8, fig.width=10, warning=FALSE, message=FALSE}
+# Histogram
+metadata %>% 
+  	ggplot(aes(color=sampleID, x=nUMI, fill= sampleID)) + 
+  	geom_density(alpha = 0.2) + 
+  	scale_x_log10() + 
+  	theme_classic() +
+  	ylab("log10 cell density") +
+  	geom_vline(xintercept = 1000)
+```
+
+## Number of genes detected per cell
+Low-quality cells or empty droplets will often have very few genes. However, cell doublets/multiplets may exhibit an aberrantly high gene counts.
+```{r nGenesPerCellPlot, warning=FALSE, fig.width=10}
+# Violin plot
+VlnPlot(merged_seurat, features = "nFeature_RNA", alpha = 0.1) + scale_y_continuous(breaks = seq(0, 8000, by = 500))
+
+# Histogram
+metadata %>% 
+  	ggplot(aes(color=sampleID, x=nGene, fill= sampleID)) + 
+  	geom_density(alpha = 0.2) + 
+  	theme_classic() +
+  	scale_x_log10() + 
+  	geom_vline(xintercept = 300) +
+    labs(title = "Number of Cells vs Number of Genes", y = "Cell density")
+
+# Box plot
+metadata %>% 
+  	ggplot(aes(x=sampleID, y=log10(nGene), fill=sampleID)) + 
+  	geom_boxplot() + 
+  	theme_classic() +
+  	theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  	theme(plot.title = element_text(hjust=0.5, face="bold")) +
+  	ggtitle("Number of Cells vs Number of Genes")
+```
+
+## Number of genes per UMI
+
+Gives an idea of the complexity of the dataset (more genes per UMI = more complex data). Generally, the novelty score is expected to be above 0.80.
+
+```{r complexityQC}
+# Visualize the overall complexity of the gene expression by visualizing the genes detected per UMI
+metadata %>%
+  	ggplot(aes(x=log10GenesPerUMI, color = sampleID, fill=sampleID)) +
+  	geom_density(alpha = 0.2) +
+  	theme_classic() +
+  	geom_vline(xintercept = 0.8) +
+    ylab("Cell density")
+```
+
+
+
+Here, the number of genes versus the number of UMIs is plotted, colored by the fraction of mitochondrial reads. Mitochondrial read fractions are only high (light blue) in particularly low count cells with few detected genes. This could be indicative of damaged/dying cells, and these cells are filtered out by our count and gene number thresholds. Jointly visualizing the count and gene thresholds shows the joint filtering effect.
+
+Cells that are poor quality are likely to have low genes and UMIs per cell, and correspond to data points in the bottom left quadrant of the plot. The cells in the bottom right quadrant have high UMIs but only a few number of genes. These could be dying cells but could also represent a population of low complexity cell types.
+
+```{r nGenesPerUMIPlot, message=FALSE, warning=FALSE, fig.width=8, fig.height=10}
+# Visualize the correlation between genes detected and number of UMIs and determine whether strong presence of cells with low numbers of genes/UMIs
+metadata %>% 
+  	ggplot(aes(x=nUMI, y=nGene, color=mitoRatio)) + 
+  	geom_point() + 
+	  scale_colour_gradient(low = "gray90", high = "black") +
+  	stat_smooth(method=lm) +
+  	scale_x_log10() + 
+  	scale_y_log10() + 
+  	theme_classic() +
+    labs(title = "Number of Genes per UMI") +
+  	geom_vline(xintercept = 2200) +
+  	geom_hline(yintercept = 600) +
+  	facet_wrap(~sampleID)
+```
+
+
+## Mitochondrial counts ratio
+
+Identify whether there is a large amount of mitochondrial contamination from dead or dying cells. Poor quality samples for mitochondrial counts are defined as cells which surpass the 0.2 mitochondrial ratio mark, unless this is expected for the sample.
+
+```{r percentmtPlot, fig.height=10, fig.width=8, warning=FALSE, message=FALSE}
+# Violin plot of mitochondrial percentage
+VlnPlot(merged_seurat, features = "percent.mt", alpha=0.1) + scale_y_continuous(breaks = seq(0, 100, by = 5))
+```
+
+```{r mtRatioPlot, fig.width=10}
+# Histogram of mitochondrial ratio
+metadata %>% 
+  	ggplot(aes(color=sampleID, x=mitoRatio, fill=sampleID)) + 
+  	geom_density(alpha = 0.2) + 
+  	scale_x_log10() + 
+  	theme_classic() +
+  	geom_vline(xintercept = 0.2) +
+    labs(title = "Mitochondrial Counts Ratio", y = "Cell density")
+```
+
+# Filtering
+Considering any of the above QC metrics in isolation can lead to misinterpretation of cellular signals. E.g., cells with a high fraction of mitochondrial counts may be involved in respiratory processes and may be cells to keep. Always consider the joint effects of these metrics when setting thresholds, and set them to be as permissive as possible to avoid filtering out viable cell populations.
+
+## Cell level filtering
+
+Based on the results observed in the QC plots, the following filters will be applied:
+- nUMI (nCount_RNA) > 500
+- nGene (nFeature_RNA) > 300 and < 6000
+- percent.mt < 20%
+
+```{r cell-level-filtering}
+### Filter merged lymph node object
+filtered_ln <- subset(x = merged_ln,
+                          subset = (nCount_RNA >= 500) &
+                            (nFeature_RNA >= 300) &
+                            (nFeature_RNA <= 6000) &
+                            (percent.mt < 20))
+
+### Filter merged thymus object
+filtered_thym <- subset(x = merged_thym,
+                          subset = (nCount_RNA >= 500) &
+                            (nFeature_RNA >= 300) &
+                            (nFeature_RNA <= 6000) &
+                            (percent.mt < 20))
+```
+
+## Gene-level filtering
+
+Genes with zero counts can dramatically reduce the average expression for a cell, so they should be removed from the data.
+
+```{r gene-level-filtering}
+
+# Remove genes that have zero expression in all cells
+## Merged lymph node object
+counts_ln <- GetAssayData(object = filtered_ln, layer = "counts")
+nonzero <- counts_ln > 0 # output a logical vector for every gene on whether there are more than zero counts per cell
+
+## Merged thymus object
+counts_thym <- GetAssayData(object = filtered_thym, layer = "counts")
+nonzero <- counts_thym > 0
+
+
+
+# Filter by prevalence - keep only genes which are expressed in 10 or more cells
+keep_genes <- Matrix::rowSums(nonzero) >= 10
+
+# Only keeping those genes expressed in more than 10 cells
+filtered_counts_ln <- counts_ln[keep_genes, ] # lymph node
+filtered_counts_thym <- counts_thym[keep_genes, ] # thymus
+
+# Reassign to filtered Seurat object
+filtered_ln <- CreateSeuratObject(filtered_counts_ln, meta.data = filtered_ln@meta.data) # lymph node
+filtered_thym <- CreateSeuratObject(filtered_counts_thym, meta.data = filtered_thym@meta.data) # thymus
+```
+
+## Examine filtered objects
+```{r}
+### Lymph node
+paste("Unfiltered lymph node object:")
+merged_ln
+
+paste("Filtered lymph node object:")
+filtered_ln
+
+
+### Thymus
+paste("Unfiltered thymus object:")
+merged_thym
+
+paste("Filtered thymus object:")
+filtered_thym
+```
+
+## Save filtered cells
+```{r save-filtered}
+save(filtered_ln, file="seurat_merged_LN_filtered.RData")
+save(filtered_thym, file="seurat_merged_THYM_filtered.RData")
+```
+
+Next step: Data normalization and integration.
+
+# Citations
+```{r citations}
+sessionInfo()
+citation()
+```
