@@ -397,8 +397,8 @@ filtered_thym
 
 ## Save filtered cells
 ```{r save-filtered}
-save(filtered_ln, file="seurat_merged_LN_filtered.RData")
-save(filtered_thym, file="seurat_merged_THYM_filtered.RData")
+saveRDS(filtered_ln, file="seurat_merged_LN_filtered.RData")
+saveRDS(filtered_thym, file="seurat_merged_THYM_filtered.RData")
 ```
 
 Next step: Data normalization and integration.
