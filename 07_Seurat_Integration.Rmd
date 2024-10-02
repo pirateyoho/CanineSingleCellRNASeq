@@ -81,13 +81,13 @@ integ_ln <- IntegrateLayers(object = integ_ln,
 integ_ln[["RNA"]] <- JoinLayers(integ_ln[["RNA"]]) # rejoin layers after integration
 ```
 
-```{r integration2-THYM, eval=FALSE}
+```{r integration2-THYM}
 integ_thym <- IntegrateLayers(object = integ_thym,
                             method = CCAIntegration,
                             orig.reduction = "pca", 
                             new.reduction = "integrated.cca", 
                             verbose = FALSE)
-integ_thym[["RNA"]] <- JoinLayers(integ_thym[["RNA"]]) # rejoin layers after integratio
+integ_thym[["RNA"]] <- JoinLayers(integ_thym[["RNA"]]) # rejoin layers after integration
 ```
 
 ## Visualize after integration
@@ -111,7 +111,7 @@ DimPlot(integ_thym, reduction = "umap", group.by = c("orig.ident", "seurat_clust
 
 
 ## Save integrated Seurat objects
-```{r eval=FALSE}
+```{r}
 saveRDS(integ_ln, file="seurat_integrated_LN_filtered.RData")
 saveRDS(integ_thym, file="seurat_integrated_THYM_filtered.RData")
 ```
