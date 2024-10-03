@@ -62,6 +62,7 @@ BiocManager::install("scRNAseq")
 BiocManager::install("scuttle")
 install.packages('ape')
 BiocManager::install("ggtree")
+devtools::install_github("immunogenomics/presto")
 ```
 
 ## Load necessary software packages (every time):
@@ -93,6 +94,7 @@ library(scRNAseq)
 library(scuttle)
 library(ape)
 library(ggtree)
+library(presto)
 ```
 
 ## Set working directory
