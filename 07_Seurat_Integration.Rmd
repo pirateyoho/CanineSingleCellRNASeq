@@ -17,6 +17,43 @@ knitr::opts_chunk$set(dev = "png",
 # Introduction
 The purpose of this script is to integrate scRNA-seq data from all samples arising from the same location (thymus, lymp node), which can help match shared cell types and states across datasets, boost statistical power, and facilitate accurate comparative analysis across datasets. The integration procedure aims to return a single dimensional reduction that captures the shared sources of variance across multiple layers, so that cells in a similar biological state will cluster. The method returns a dimensional reduction which can be used for visualization and unsupervised clustering analysis.
 
+# Loading data and packages
+## Load necessary software packages
+```{r software-load, results="hide", message=FALSE}
+library(Seurat)
+library(tidyverse)
+library(clustree)
+library(stringr)
+library(DoubletFinder)
+library(patchwork)
+library(scales)
+library(cowplot)
+library(ggrepel)
+library(colorspace)
+library(DESeq2)
+library(pheatmap)
+library(RColorBrewer)
+library(SeuratDisk)
+library(SingleR)
+library(viridis)
+library(reshape)
+library(lemon)
+library(ggsankey)
+library(msigdbr)
+library(clusterProfiler)
+library(slingshot)
+library(ggpubr)
+library(scRNAseq)
+library(scuttle)
+library(ape)
+library(ggtree)
+```
+
+## Set working directory
+```{r setwd}
+setwd("C:/Users/edlarsen/Documents/240828_scRNAseq")
+```
+
 # Load filtered Seurat objects
 ```{r load-data}
 filtered_ln <- readRDS(file = "C:/Users/edlarsen/Documents/240828_scRNAseq/seurat_merged_LN_filtered.RData")
@@ -52,7 +89,7 @@ DimPlot(integ_ln, reduction = "umap.unintegrated.LN", group.by = c("orig.ident",
 ```{r integration1-THYM, fig.width=14}
 # run standard analysis workflow
 ## Thymus
-integ_thym <- NormalizeData(filtered_ln)
+integ_thym <- NormalizeData(filtered_thym)
 integ_thym <- FindVariableFeatures(integ_thym)
 integ_thym <- ScaleData(integ_thym)
 integ_thym <- RunPCA(integ_thym)
@@ -111,7 +148,7 @@ DimPlot(integ_thym, reduction = "umap", group.by = c("orig.ident", "seurat_clust
 
 
 ## Save integrated Seurat objects
-```{r}
+```{r save-object}
 saveRDS(integ_ln, file="seurat_integrated_LN_filtered.RData")
 saveRDS(integ_thym, file="seurat_integrated_THYM_filtered.RData")
 ```
