@@ -402,7 +402,7 @@ saveRDS(filtered_ln, file="seurat_merged_LN_filtered.RData")
 saveRDS(filtered_thym, file="seurat_merged_THYM_filtered.RData")
 ```
 
-Next step: Data normalization and integration.
+Next step: Identify and remove doublets.
 
 # Citations
 ```{r citations}
