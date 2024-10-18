@@ -1,5 +1,5 @@
 ---
-title: "241001_Seurat_Integration"
+title: "Seurat Sample Integration"
 author: "Eileen Owens"
 date: "`r Sys.Date()`"
 output: html_document
@@ -15,7 +15,7 @@ knitr::opts_chunk$set(dev = "png",
 ```
 
 # Introduction
-The purpose of this script is to integrate scRNA-seq data from all samples arising from the same location (thymus, lymp node), which can help match shared cell types and states across datasets, boost statistical power, and facilitate accurate comparative analysis across datasets. The integration procedure aims to return a single dimensional reduction that captures the shared sources of variance across multiple layers, so that cells in a similar biological state will cluster. The method returns a dimensional reduction which can be used for visualization and unsupervised clustering analysis.
+The purpose of this script is to integrate scRNA-seq data from all samples arising from the same location (thymus, lymph node), which can help match shared cell types and states across datasets, boost statistical power, and facilitate accurate comparative analysis across datasets. The integration procedure aims to return a single dimensional reduction that captures the shared sources of variance across multiple layers, so that cells in a similar biological state will cluster. The method returns a dimensional reduction which can be used for visualization and unsupervised clustering analysis.
 
 # Loading data and packages
 ## Load necessary software packages
@@ -55,6 +55,7 @@ setwd("C:/Users/edlarsen/Documents/240828_scRNAseq")
 ```
 
 # Load filtered Seurat objects
+Input: A filtered Seurat object with doublets removed.
 ```{r load-data}
 filtered_ln <- readRDS(file = "C:/Users/edlarsen/Documents/240828_scRNAseq/seurat_merged_LN_filtered.RData")
 filtered_thym <- readRDS(file = "C:/Users/edlarsen/Documents/240828_scRNAseq/seurat_merged_THYM_filtered.RData")
@@ -80,9 +81,9 @@ integ_ln <- RunPCA(integ_ln)
 
 # visualize
 integ_ln <- FindNeighbors(integ_ln, dims = 1:30, reduction = "pca")
-integ_ln <- FindClusters(integ_ln, resolution = 2, cluster.name = "unintegrated_LN_clusters")
-integ_ln <- RunUMAP(integ_ln, dims = 1:30, reduction = "pca", reduction.name = "umap.unintegrated.LN")
-DimPlot(integ_ln, reduction = "umap.unintegrated.LN", group.by = c("orig.ident", "seurat_clusters")) + # orig.ident is the sample ID
+integ_ln <- FindClusters(integ_ln, resolution = 2)
+integ_ln <- RunUMAP(integ_ln, dims = 1:30, reduction = "pca")
+DimPlot(integ_ln, reduction = "umap", group.by = c("orig.ident", "seurat_clusters")) + # orig.ident is the sample ID
   plot_annotation(title = "Canine Lymph Node - Unintegrated", theme = theme(plot.title = element_text(hjust=0.5, size = 20)))
 ```
 
@@ -96,9 +97,9 @@ integ_thym <- RunPCA(integ_thym)
 
 # visualize
 integ_thym <- FindNeighbors(integ_thym, dims = 1:30, reduction = "pca")
-integ_thym <- FindClusters(integ_thym, resolution = 2, cluster.name = "unintegrated_thym_clusters")
-integ_thym <- RunUMAP(integ_thym, dims = 1:30, reduction = "pca", reduction.name = "umap.unintegrated.thym")
-DimPlot(integ_thym, reduction = "umap.unintegrated.thym", group.by = c("orig.ident", "seurat_clusters")) + # orig.ident is the sample ID
+integ_thym <- FindClusters(integ_thym, resolution = 2)
+integ_thym <- RunUMAP(integ_thym, dims = 1:30, reduction = "pca")
+DimPlot(integ_thym, reduction = "umap", group.by = c("orig.ident", "seurat_clusters")) + # orig.ident is the sample ID
   plot_annotation(title = "Canine Thymus - Unintegrated", theme = theme(plot.title = element_text(hjust=0.5, size = 20)))
 ```
 
@@ -152,6 +153,8 @@ DimPlot(integ_thym, reduction = "umap", group.by = c("orig.ident", "seurat_clust
 saveRDS(integ_ln, file="seurat_integrated_LN_filtered.RData")
 saveRDS(integ_thym, file="seurat_integrated_THYM_filtered.RData")
 ```
+
+Next step: Data normalization and clustering.
 
 # Citations
 ```{r citations}
