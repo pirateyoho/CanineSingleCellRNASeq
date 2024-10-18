@@ -1,5 +1,5 @@
 ---
-title: "Doublet Finder"
+title: "DoubletFinder"
 author: "Eileen Owens"
 date: "`r Sys.Date()`"
 output: html_document
