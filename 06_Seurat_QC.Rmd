@@ -94,7 +94,6 @@ library(scRNAseq)
 library(scuttle)
 library(ape)
 library(ggtree)
-library(presto)
 ```
 
 ## Set working directory
@@ -145,7 +144,7 @@ head(T165635@meta.data)
 head(Th157850@meta.data)
 ```
 
-# Merging and integrating samples
+# Merging samples
 
 ## Merge all samples into one Seurat object for QC
 Merging makes it easier to run the QC steps and easily compare the data quality for all samples.
