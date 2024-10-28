@@ -1,5 +1,5 @@
 ---
-title: "DoubletFinder"
+title: "Doublet Finder"
 author: "Eileen Owens"
 date: "`r Sys.Date()`"
 output: html_document
@@ -25,6 +25,8 @@ This script has been adapted from the DoubletFinder documentation (https://githu
 library(Seurat)
 library(tidyverse)
 library(DoubletFinder) # remotes::install_github('chris-mcginnis-ucsf/DoubletFinder')
+library(ggplot2)
+library(patchwork)
 ```
 
 ## Set working directory
@@ -50,7 +52,7 @@ thym_split <- SplitObject(filtered_thym, split.by = "orig.ident")
 
 # DoubletFinder function
 
-```{r}
+```{r doubletFinder-function}
 # Functions ===================================================================
 #----------------------------------------------------------#
 # run_doubletfinder_custom
@@ -151,9 +153,8 @@ ln_split <- lapply(ln_split, run_doubletfinder_custom)
 thym_split <- lapply(thym_split, run_doubletfinder_custom)
 ```
 
-
 ## Add DoubletFinder results to Seurat object
-```{r}
+```{r ln-object-edit}
 # Lymph node
 filtered_ln <- NormalizeData(filtered_ln, normalization.method = "LogNormalize", scale.factor = 10000)
 filtered_ln <- FindVariableFeatures(filtered_ln)
@@ -166,26 +167,39 @@ rownames(sglt_dblt_metadata_LN) <- sglt_dblt_metadata_LN$row_names # assign cell
 sglt_dblt_metadata_LN$row_names <- NULL
 head(sglt_dblt_metadata_LN)
 filtered_ln <- AddMetaData(filtered_ln, sglt_dblt_metadata_LN, col.name = "doublet_finder")
+
+# save (optional)
+## the DoubletFinder function takes a long time to run, so it may be helpful to save this object to avoid having to repeat these steps in the future
+#saveRDS(filtered_ln, file="merged_filtered_LN_withDoubletFinderMetadata.RData")
 ```
 
-```{r}
+```{r thym-object-edit}
 # Thymus
+filtered_thym <- NormalizeData(filtered_thym, normalization.method = "LogNormalize", scale.factor = 10000)
+filtered_thym <- FindVariableFeatures(filtered_thym)
+filtered_thym <- ScaleData(filtered_thym)
+filtered_thym <- RunPCA(filtered_thym)
+filtered_thym <- RunUMAP(filtered_thym, dims = 1:10)
+
 sglt_dblt_metadata_THYM <- data.frame(bind_rows(thym_split)) # merge to a single dataframe
 rownames(sglt_dblt_metadata_THYM) <- sglt_dblt_metadata_THYM$row_names # assign cell IDs to row names to ensure match
 sglt_dblt_metadata_THYM$row_names <- NULL
 head(sglt_dblt_metadata_THYM)
 filtered_thym <- AddMetaData(filtered_thym, sglt_dblt_metadata_THYM, col.name = "doublet_finder")
+
+# save (optional)
+#saveRDS(filtered_ln, file="merged_filtered_THYM_withDoubletFinderMetadata.RData")
 ```
 
 # Summary of doublet detection results
-```{r vlnplots, fig.width=8}
+```{r vlnplot-LN, fig.width=8}
 # Check how doublets singlets differ in QC measures per sample.
 VlnPlot(filtered_ln, group.by = 'orig.ident', split.by = "doublet_finder",
         features = c("nFeature_RNA", "nCount_RNA"), 
         ncol = 3, pt.size = 0) + theme(legend.position = 'right')
 ```
 
-```{r}
+```{r vlnplot-THYM, fig.width=8}
 VlnPlot(filtered_thym,
         group.by = "orig.ident",
         split.by = "doublet_finder",
@@ -196,27 +210,79 @@ VlnPlot(filtered_thym,
           )
 ```
 
-```{r}
+```{r dimplot-ln, fig.width = 8, fig.height = 8}
 DimPlot(filtered_ln,
         group.by = "doublet_finder",
         reduction = "umap",
         pt.size=0.5) + ggtitle("DoubletFinder: Canine Lymph Node")
 ```
 
-```{r}
-filtered_thym <- RunPCA(filtered_thym)
-filtered_thym <- RunUMAP(filtered_thym, dims = 1:10)
-
+```{r dimplot-thym, fig.width = 8, fig.height = 8}
 DimPlot(filtered_thym,
         group.by = "doublet_finder",
         reduction = "umap",
         pt.size=0.5)
 ```
 
+# Cell-Cycle Scoring
+Ensure that predicted doublets are not cycling cells.
+
+## Assign Cell-Cycle Scores
+Each cell will be assigned a score based on its expression of G2/M and S phase markers. The CellCycleStoring() function stores S and G2/M scores in object metadata, along with the predicted classification of each cell in either G2/M, S, or G1 phase.
+```{r cell-cycle}
+# segregate G2/M phase and S phase markers from Seurat's built-in list of cell cycle markers
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+# assign each cell a score based on expression of G2/M and S phase markers
+filtered_ln <- CellCycleScoring(filtered_ln, 
+                                s.features = s.genes, 
+                                g2m.features = g2m.genes, 
+                                set.ident = TRUE)
+
+filtered_thym <- CellCycleScoring(filtered_thym, 
+                                s.features = s.genes, 
+                                g2m.features = g2m.genes, 
+                                set.ident = TRUE)
+```
+
+## Distribution of cell cycle markers
+These marker sets should be anticorrelated in their expression levels, and cells expressing neither are likely not cycling and in G1 phase
+```{r cell-cycle-ridgeplot}
+## Lymph node
+## Lymph node
+lncc <- RidgePlot(filtered_ln,
+          features = c("PCNA", "TOP2A", "MCM6", "MKI67", "TOP2B"),
+          ncol = 3)
+lncc + plot_annotation(title = "Distribution of Cell Cycle Markers: Canine Lymph Node", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+
+## thymus
+thymcc <- RidgePlot(filtered_thym,
+          features = c("PCNA", "TOP2A", "MCM6", "MKI67", "TOP2B"),
+          ncol = 3)
+thymcc + plot_annotation(title = "Distribution of Cell Cycle Markers: Canine Thymus", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+## Compare location of cycling cells to predicted doublets on UMAP
+```{r cell-cycle-umap, warning=FALSE, message=FALSE, fig.width = 8, fig.height = 8}
+filtered_ln <- RunPCA(filtered_ln, features = c(s.genes, g2m.genes))
+DimPlot(filtered_ln,
+        group.by = "Phase",
+        reduction = "umap",
+        pt.size=0.5) + 
+  ggtitle("Cell Cycle Scoring: Canine Lymph Node")
+
+filtered_thym <- RunPCA(filtered_thym, features = c(s.genes, g2m.genes))
+DimPlot(filtered_thym,
+        group.by = "Phase",
+        reduction = "umap",
+        pt.size=0.5) + 
+  ggtitle("Cell Cycle Scoring: Canine Thymus")
+```
 
 # Remove doublets and save
-
-```{r save-singlets}
+If the doublets were not limited to cycling cells and you wish to remove doublets from your Seurat object before downstream analysis, set this code chunk to EVAL=TRUE.
+```{r save-singlets, eval=FALSE}
 filtered_ln <- subset(filtered_ln, doublet_finder == "Singlet")
 filtered_thym <- subset(filtered_thym, doublet_finder == "Singlet")
 
