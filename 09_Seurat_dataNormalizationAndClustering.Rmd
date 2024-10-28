@@ -57,7 +57,7 @@ setwd("C:/Users/edlarsen/Documents/240828_scRNAseq")
 ```
 
 ## Load Seurat objects
-Input: Seurat objects that have been filtered to remove low quality cells and doublets, and multiple samples from the same location integrated into one object.
+Input: Seurat objects that have been filtered to remove low quality cells +/- doublets, and multiple samples from the same location integrated into one object.
 ```{r}
 integ_ln <- readRDS(file = "seurat_integrated_LN_filtered.RData")
 integ_thym <- readRDS(file = "seurat_integrated_THYM_filtered.RData")
