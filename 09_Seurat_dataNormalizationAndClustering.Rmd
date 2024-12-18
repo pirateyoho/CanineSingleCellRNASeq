@@ -56,7 +56,7 @@ library(patchwork)
 setwd("C:/Users/edlarsen/Documents/240828_scRNAseq")
 ```
 
-## Load Seurat objects
+## Load filtered Seurat objects
 Input: Seurat objects that have been filtered to remove low quality cells +/- doublets, and multiple samples from the same location integrated into one object.
 ```{r}
 integ_ln <- readRDS(file = "seurat_integrated_LN_filtered.RData")
@@ -97,7 +97,7 @@ plot2 <- LabelPoints(
   points = top10_ln,
   repel = TRUE
 ) + 
-  labs(title = "Top 10 Most Variable Features: Canine Lymph Node")
+  labs(title = "Top 10 Most Variable Features:\n Canine Lymph Node")
 
 plot2
 
@@ -109,7 +109,7 @@ plot4 <- LabelPoints(
   points = top10_thym,
   repel = TRUE
 ) +
-  labs(title = "Top 10 Most Variable Features: Canine Thymus")
+  labs(title = "Top 10 Most Variable Features:\n Canine Thymus")
 
 plot4 
 ```
@@ -128,7 +128,7 @@ normalized_thym <- ScaleData(normalized_thym) # thymus
 Each PC of a PCA score essentially represents a 'metafeature' that combines information across a correlated feature set. The top principal components therefore represent a robust compression of the dataset. 
 
 ```{r RunPCA, message=FALSE, fig.height=6}
-# By default, the previously determined variable features are used as input, but can be defined using the 'features' argument; if you want to do a custom set of features, make sure they are passed to ScaleData() first.
+# By default, the previously determined variable features are used as input, but can be thym_defined using the 'features' argument; if you want to do a custom set of features, make sure they are passed to ScaleData() first.
 
 normalized_ln <- RunPCA(normalized_ln) # lymph node
 normalized_thym <- RunPCA(normalized_thym) # thymus
@@ -144,24 +144,6 @@ DimPlot(normalized_thym, reduction = "pca") + ggtitle("PCA: Canine Thymus")
 
 DimHeatmap() allows for easy exploration of the primary sources of heterogeneity in a dataset, and can be useful when trying to decide which PCs to include for further downstream analysis. Both cells and features are ordered according to their PCA scores. Setting 'cells' to a number plots the 'extreme' cells on both ends of the spectrum. Though a supervised analysis, this is a valuable tool for exploring correlated feature sets.
 
-```{r DimHeatmap}
-DimHeatmap(normalized_ln, 
-           dims = 1, 
-           cells = 500, 
-           balanced = TRUE,
-           fast = FALSE) + # fast = FALSE allows customized legends with ggplot
-  ggtitle("PC_1: Canine Lymph Node") +
-  theme(plot.title = element_text(hjust = 0.5))
-
-DimHeatmap(normalized_thym, 
-           dims = 1, 
-           cells = 500, 
-           balanced = TRUE,
-           fast = FALSE) +
-  ggtitle("PC_1: Canine Thymus") +
-  theme(plot.title = element_text(hjust = 0.5))
-```
-
 ## 15 PC dimensions: Lymph node
 ```{r pc15LN, fig.width=10, fig.height=12}
 DimHeatmap(normalized_ln,
@@ -169,7 +151,6 @@ DimHeatmap(normalized_ln,
            cells = 500,
            balanced = TRUE)
 ```
-
 
 ## 15 PC dimensions: Thymus
 ```{r pc15THYM, fig.width=10, fig.height=12}
@@ -188,7 +169,6 @@ ElbowPlot(normalized_thym, ndims=40) + ggtitle("Elbow plot of principal componen
 ```
 The location of the elbow in these plots suggests that the majority of the true signal is captured in the first 10 PCs. Based on this, the first 10 PCs will be used to generate cell clusters for the thymus and lymph node in Seurat.
 
-
 # Cluster cells
 Seurat first embeds cells in a K-nearest neighbor graph based on the euclidean distance in PCA space, and refines the edge weights between any two cells based on the shared overlap in their local neighborhoods (Jaccard similarity). This draws edges between cells with similar feature expression patterns. To cluster the cells, modularity optimization is then applied to iteratively group cells together.
 
@@ -197,13 +177,13 @@ The resolution parameter determines how many clusters are created. Values above 
 ```{r clustering, message=FALSE, results='hide'}
 ## lymph node
 normalized_ln <- FindNeighbors(normalized_ln, dims = 1:10) # replace with the PCs calculated above
-normalized_ln <- FindClusters(normalized_ln, resolution = c(0.4,0.5,0.6,0.7,0.8,0.9,1.0,1.1,1.2)) # use a value above/below 1.0 if you want to obtain a larger/smaller number of clusters (communities); setting this parameter between 0.4-1.2 typically returns good results for single-cell datasets of ~3K cells; optimal resolution often increases for larger datasets.
+normalized_ln <- FindClusters(normalized_ln, resolution = c(0.1,0.15,0.2,0.3,0.4,0.45,0.5,0.6,0.7,0.8,0.9,1.0,1.1)) # use a value above/below 1.0 if you want to obtain a larger/smaller number of clusters (communities); setting this parameter between 0.4-1.2 typically returns good results for single-cell datasets of ~3K cells; optimal resolution often increases for larger datasets.
 head(normalized_ln[[]]) # clusters at the various resolutions are stored in the RNA_snn.res columns
 normalized_ln[["RNA_snn_res.2"]] <- NULL # remove any additional resolutions not in the list above
 
 ## thymus
 normalized_thym <- FindNeighbors(normalized_thym, dims = 1:10) # replace with the PCs calculated above
-normalized_thym <- FindClusters(normalized_thym, resolution = c(0.4,0.5,0.6,0.7,0.8,0.9,1.0,1.1,1.2))
+normalized_thym <- FindClusters(normalized_thym, resolution = c(0.1,0.15,0.2,0.25,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0,1.1))
 head(normalized_thym[[]])
 normalized_thym[["RNA_snn_res.2"]] <- NULL # remove any additional resolutions not in the list above
 ```
@@ -221,136 +201,548 @@ clustree2 <- clustree(normalized_thym, prefix = "RNA_snn_res.")
 clustree2 + ggtitle("Canine Thymus Clusters") + theme(plot.title = element_text(hjust = 0.5))
 ```
 
-Clusters for the canine lymph node appear most stable at the 0.5-0.7 resolution. Clusters for the canine thymus appear most stable at the 0.4-0.5 resolution.
-
-
 # Run non-linear dimensional reduction (UMAP)
 These algorithms learn the underlying structure in the dataset in order to place similar cells together in low-dimensional space. Cells that are grouped together within graph-based clusters determined above should co-localize on these dimension reduction plots.
 All visualization techniques have limitations and cannot fully represent the complexity of the underlying data.
 
-
 ## Lymph Node
-
-```{r UMAP-LN, message=FALSE, results='hide', fig.width = 16}
-normalized_ln <- RunUMAP(normalized_ln, dims = 1:10) # replace with the PCs calculated above
-umap_ln <- DimPlot(normalized_ln,
-                   reduction = "umap",
-                   ncol = 2,
-                   group.by=glue::glue("RNA_snn_res.{c(0.4,0.5,0.6,0.7)}"), # plot resolutions based on clustree results
-                   label = TRUE,
-                   label.size = 6)
-umap_ln + plot_annotation(title = "Canine Lymph Node", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
-```
-
-## Thymus
-```{r UMAP-THYM, message=FALSE, results='hide', fig.width = 12}
-normalized_thym <- RunUMAP(normalized_thym, dims = 1:10) # replace with the PCs calculated above
-umap_thym <- DimPlot(normalized_thym,
+### Default parameters
+```{r, message=FALSE, warning=FALSE, fig.width = 16, fig.height = 14}
+ln_def <- RunUMAP(normalized_ln, dims = 1:10) # replace with the PCs calculated above
+umap_ln_def <- DimPlot(ln_def,
                      reduction = "umap",
-                     ncol = 3,
-                     group.by=glue::glue("RNA_snn_res.{c(0.4,0.5,0.6)}"), # plot resolutions based on clustree results
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.15,0.2,0.3)}"), # plot resolutions based on clustree results
                      label = TRUE,
                      label.size = 6)
-umap_thym + plot_annotation(title = "Canine Thymus", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+umap_ln_def + plot_annotation(title = "Canine Lymph Node, default parameters", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
 ```
 
-# Find differentially expressed features
-By default, identifies all positive and negative markers of a single cluster compared to all other cells.
-
-## Lymph node
-```{r FindAllMarkers-LN, message=FALSE}
-
-# 0.4 resolution
-normalized_ln_0.4 <- FindClusters(normalized_ln, resolution = 0.4)
-normalized_ln_0.4 <- RunUMAP(normalized_ln_0.4, dims = 1:10)
-ln.markers_0.4 <- FindAllMarkers(normalized_ln_0.4, only.pos=TRUE)
-ln.markers_0.4 %>%
-  group_by(cluster) %>%
-  dplyr::filter(avg_log2FC > 1)
-
-# 0.5 resolution
-normalized_ln_0.5 <- FindClusters(normalized_ln, resolution = 0.5)
-normalized_ln_0.5 <- RunUMAP(normalized_ln_0.5, dims = 1:10)
-ln.markers_0.5 <- FindAllMarkers(normalized_ln_0.5, only.pos=TRUE)
-ln.markers_0.5 %>%
-  group_by(cluster) %>%
-  dplyr::filter(avg_log2FC > 1)
-
-# 0.6 resolution
-normalized_ln_0.6 <- FindClusters(normalized_ln, resolution = 0.5)
-normalized_ln_0.6 <- RunUMAP(normalized_ln_0.6, dims = 1:10)
-ln.markers_0.6 <- FindAllMarkers(normalized_ln_0.6, only.pos=TRUE)
-ln.markers_0.6 %>%
-  group_by(cluster) %>%
-  dplyr::filter(avg_log2FC > 1)
-
-# 0.7 resolution
-normalized_ln_0.7 <- FindClusters(normalized_ln, resolution = 0.5)
-normalized_ln_0.7 <- RunUMAP(normalized_ln_0.7, dims = 1:10)
-ln.markers_0.7 <- FindAllMarkers(normalized_ln_0.7, only.pos=TRUE)
-ln.markers_0.7 %>%
-  group_by(cluster) %>%
-  dplyr::filter(avg_log2FC > 1)
-
-# export
-write.csv(ln.markers_0.4, file="241017_K9LN_DEfeaturesByUMAPcluster_10PCs_0.4res.csv")
-write.csv(ln.markers_0.5, file="241017_K9LN_DEfeaturesByUMAPcluster_10PCs_0.5res.csv")
-write.csv(ln.markers_0.6, file="241017_K9LN_DEfeaturesByUMAPcluster_10PCs_0.6res.csv")
-write.csv(ln.markers_0.7, file="241017_K9LN_DEfeaturesByUMAPcluster_10PCs_0.7res.csv")
+```{r, message=FALSE, warning=FALSE, fig.width = 16, fig.height = 14}
+umap_ln_def <- DimPlot(ln_def,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.4,0.45,0.5,0.6)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_def + plot_annotation(title = "Canine Lymph Node, default parameters", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
 ```
 
-
-```{r FeaturePlot-LN, fig.width=20}
-FeaturePlot(normalized_ln, 
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(ln_def,
             reduction = "umap",
-            features = c("CCR9", "CD4", "CD8", "DNTT", "CD34", "RAG1", "RAG2", "IL7R", "CCR7", "CD14", "LYZ", "MS4A1", "CD8A", "FCGR3A", "MS4A7", "GNLY", "NKG7", "FCER1A", "CST3", "PPBP"))
+            features = c("CD3E", "CD5", "CD4", "CD8A", "FOXP3", "IL2RA", "GATA3", "TBX21", "RORC", "PAX5", "LYZ", "PPBP")) + 
+  plot_annotation(title = "Canine Lymph Node Feature Expression, default parameters", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
+## Effect of varying n.neighbors
+Determines the number of neighboring points used in local approximations of manifold structure. Larger values will result in more global structure being preserved at the loss of detailed local structure. Sensible values (according to Seurat docs) are in the range 5 to 50.
+
+`n.neighbors` = 5:
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+ln_n5 <- RunUMAP(normalized_ln, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 5, # default is 30
+                           min.dist = 0.3) # default is 0.3)
+umap_ln_n5 <- DimPlot(ln_n5,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.15,0.2,0.3)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_n5 + plot_annotation(title = "Canine Lymph Node, n.neighbors = 5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+umap_ln_n5 <- DimPlot(ln_n5,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.4,0.45,0.5,0.6)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_n5 + plot_annotation(title = "Canine Lymph Node, n.neighbors = 5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(ln_n5,
+            reduction = "umap",
+            features = c("CD3E", "CD5", "CD4", "CD8A", "FOXP3", "IL2RA", "GATA3", "TBX21", "RORC", "PAX5", "LYZ", "PPBP")) + 
+  plot_annotation(title = "Canine Lymph Node Feature Expression, n.neighbors = 5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+`n.neighbors` = 50:
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+ln_n50 <- RunUMAP(normalized_ln, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 50, # default is 30
+                           min.dist = 0.3) # default is 0.3
+umap_ln_n50 <- DimPlot(ln_n50,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.15,0.2,0.3)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_n50 + plot_annotation(title = "Canine Lymph Node, n.neighbors = 50", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+umap_ln_n50 <- DimPlot(ln_n50,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.4,0.45,0.5,0.6)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_n50 + plot_annotation(title = "Canine Lymph Node, n.neighbors = 50", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(ln_n50,
+            reduction = "umap",
+            features = c("CD3E", "CD5", "CD4", "CD8A", "FOXP3", "IL2RA", "GATA3", "TBX21", "RORC", "PAX5", "LYZ", "PPBP")) + 
+  plot_annotation(title = "Canine Lymph Node Feature Expression, n.neighbors = 50", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+## Effect of varying min.dist
+Controls how tightly the embedding is allowed to compress points together. Larger values ensure embedded points are more evenly distributed, while smaller values allow the algorithm to optimise more accurately with regard to local structure. Sensible values (according to Seurat docs) are in the range 0.001 to 0.5.
+
+`min.dist` = 0.001
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+ln_d001 <- RunUMAP(normalized_ln, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 30, # default is 30
+                           min.dist = 0.001) # default is 0.3
+umap_ln_d001 <- DimPlot(ln_d001,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.15,0.2,0.3)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_d001 + plot_annotation(title = "Canine Lymph Node, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+umap_ln_d001 <- DimPlot(ln_d001,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.4,0.45,0.5,0.6)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_d001 + plot_annotation(title = "Canine Lymph Node, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(ln_d001,
+            reduction = "umap",
+            features = c("CD3E", "CD5", "CD4", "CD8A", "FOXP3", "IL2RA", "GATA3", "TBX21", "RORC", "PAX5", "LYZ", "PPBP")) + 
+  plot_annotation(title = "Canine Lymph Node Feature Expression, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+`min.dist` = 0.5
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+ln_d05 <- RunUMAP(normalized_ln, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 30, # default is 30
+                           min.dist = 0.5) # default is 0.3
+umap_ln_d05 <- DimPlot(ln_d05,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.15,0.2,0.3)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_d05 + plot_annotation(title = "Canine Lymph Node, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+umap_ln_d05 <- DimPlot(ln_d05,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.4,0.45,0.5,0.6)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_d05 + plot_annotation(title = "Canine Lymph Node, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(ln_d05,
+            reduction = "umap",
+            features = c("CD3E", "CD5", "CD4", "CD8A", "FOXP3", "IL2RA", "GATA3", "TBX21", "RORC", "PAX5", "LYZ", "PPBP")) + 
+  plot_annotation(title = "Canine Lymph Node Feature Expression, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+## Effect of changing both n.neighbors and min.dist together
+`n.neighbors` = 5 and `min.dist` = 0.001:
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+ln_n5_d001 <- RunUMAP(normalized_ln, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 5, # default is 30
+                           min.dist = 0.001) # default is 0.3
+umap_ln_n5_d001 <- DimPlot(ln_n5_d001,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.15,0.2,0.3)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_n5_d001 + plot_annotation(title = "Canine Lymph Node, n.neighbors = 5, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+umap_ln_n5_d001 <- DimPlot(ln_n5_d001,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.4,0.45,0.5,0.6)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_n5_d001 + plot_annotation(title = "Canine Lymph Node, n.neighbors = 5, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(ln_n5_d001,
+            reduction = "umap",
+            features = c("CD3E", "CD5", "CD4", "CD8A", "FOXP3", "IL2RA", "GATA3", "TBX21", "RORC", "PAX5", "LYZ", "PPBP")) + 
+  plot_annotation(title = "Canine Lymph Node Feature Expression, n.neighbors = 5, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+`n.neighbors` = 50 and `min.dist` = 0.001:
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+ln_n50_d001 <- RunUMAP(normalized_ln, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 50, # default is 30
+                           min.dist = 0.001) # default is 0.3
+umap_ln_n50_d001 <- DimPlot(ln_n50_d001,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.15,0.2,0.3)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_n50_d001 + plot_annotation(title = "Canine Lymph Node, n.neighbors = 50, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+umap_ln_n50_d001 <- DimPlot(ln_n50_d001,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.4,0.45,0.5,0.6)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_n50_d001 + plot_annotation(title = "Canine Lymph Node, n.neighbors = 50, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(ln_n50_d001,
+            reduction = "umap",
+            features = c("CD3E", "CD5", "CD4", "CD8A", "FOXP3", "IL2RA", "GATA3", "TBX21", "RORC", "PAX5", "LYZ", "PPBP")) + 
+  plot_annotation(title = "Canine Lymph Node Feature Expression, n.neighbors = 50, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+`n.neighbors` = 5 and `min.dist` = 0.5:
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+ln_n5_d05 <- RunUMAP(normalized_ln, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 5, # default is 30
+                           min.dist = 0.5) # default is 0.3
+umap_ln_n5_d05 <- DimPlot(ln_n5_d05,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.15,0.2,0.3)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_n5_d05 + plot_annotation(title = "Canine Lymph Node, n.neighbors = 5, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+umap_ln_n5_d05 <- DimPlot(ln_n5_d05,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.4,0.45,0.5,0.6)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_n5_d05 + plot_annotation(title = "Canine Lymph Node, n.neighbors = 5, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(ln_n5_d05,
+            reduction = "umap",
+            features = c("CD3E", "CD5", "CD4", "CD8A", "FOXP3", "IL2RA", "GATA3", "TBX21", "RORC", "PAX5", "LYZ", "PPBP")) + 
+  plot_annotation(title = "Canine Lymph Node Feature Expression, n.neighbors = 5, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+`n.neighbors` = 50 and `min.dist` = 0.5:
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+ln_n50_d05 <- RunUMAP(normalized_ln, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 50, # default is 30
+                           min.dist = 0.5) # default is 0.3
+umap_ln_n50_d05 <- DimPlot(ln_n50_d05,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.15,0.2,0.3)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_n50_d05 + plot_annotation(title = "Canine Lymph Node, n.neighbors = 50, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 16, fig.height = 14}
+umap_ln_n50_d05 <- DimPlot(ln_n50_d05,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.4,0.45,0.5,0.6)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_ln_n50_d05 + plot_annotation(title = "Canine Lymph Node, n.neighbors = 50, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(ln_n50_d05,
+            reduction = "umap",
+            features = c("CD3E", "CD5", "CD4", "CD8A", "FOXP3", "IL2RA", "GATA3", "TBX21", "RORC", "PAX5", "LYZ", "PPBP")) + 
+  plot_annotation(title = "Canine Lymph Node Feature Expression, n.neighbors = 50, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
 
 ## Thymus
-```{r FindAllMarkers-THYM, message=FALSE}
-
-# 0.4 resolution
-normalized_thym_0.4 <- FindClusters(normalized_thym, resolution = 0.4)
-normalized_thym_0.4 <- RunUMAP(normalized_thym_0.4, dims = 1:10)
-thym.markers_0.4 <- FindAllMarkers(normalized_thym_0.4, only.pos=TRUE)
-thym.markers_0.4 %>%
-  group_by(cluster) %>%
-  dplyr::filter(avg_log2FC > 1)
-
-# 0.5 resolution
-normalized_thym_0.5 <- FindClusters(normalized_thym, resolution = 0.5)
-normalized_thym_0.5 <- RunUMAP(normalized_thym_0.5, dims = 1:10)
-thym.markers_0.5 <- FindAllMarkers(normalized_thym_0.5, only.pos=TRUE)
-thym.markers_0.5 %>%
-  group_by(cluster) %>%
-  dplyr::filter(avg_log2FC > 1)
-
-# 0.6 resolution
-normalized_thym_0.6 <- FindClusters(normalized_thym, resolution = 0.6)
-normalized_thym_0.6 <- RunUMAP(normalized_thym_0.6, dims = 1:10)
-thym.markers_0.6 <- FindAllMarkers(normalized_thym_0.6, only.pos=TRUE)
-thym.markers_0.6 %>%
-  group_by(cluster) %>%
-  dplyr::filter(avg_log2FC > 1)
-
-write.csv(thym.markers_0.4, file="241008_K9THYMUS_DEfeaturesByUMAPcluster_10PCs_0.4res.csv")
-write.csv(thym.markers_0.5, file="241008_K9THYMUS_DEfeaturesByUMAPcluster_10PCs_0.5res.csv")
-write.csv(thym.markers_0.6, file="241008_K9THYMUS_DEfeaturesByUMAPcluster_10PCs_0.6res.csv")
+## default parameters
+```{r, message=FALSE, warning=FALSE, fig.width = 18, fig.height = 16}
+thym_def <- RunUMAP(normalized_thym, dims = 1:10) # replace with the PCs calculated above
+umap_thym_def <- DimPlot(thym_def,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.2,0.3,0.4)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_thym_def + plot_annotation(title = "Canine Thymus, default parameters", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
 ```
 
-```{r FeaturePlot-THYM, fig.width=12, fig.height=14}
-FeaturePlot(normalized_thym,
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(thym_def,
             reduction = "umap",
-            features = c("CCR9", "CD4", "CD8", "DNTT", "CD34", "RAG1", "RAG2", "IL7R", "CCR7", "CD14", "LYZ", "MS4A1", "CD8A", "FCGR3A", "MS4A7", "GNLY", "NKG7", "FCER1A", "CST3", "PPBP"))
+            features = c("CD34", "KIT", "CD44", "IL2RA", "CCR9", "DNTT", "RAG1", "RAG2", "CD4", "CD8A", "ZBTB7B", "IL7R", "NOTCH1", "PAX5", "LYZ")) + 
+  plot_annotation(title = "Canine Thymus Feature Expression, default parameters", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
-# Export Seurat objects
+## Effect of varying n.neighbors
+Determines the number of neighboring points used in local approximations of manifold structure. Larger values will result in more global structure being preserved at the loss of detailed local structure. Sensible values (according to Seurat docs) are in the range 5 to 50.
+
+`n.neighbors` = 5:
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 18, fig.height = 16}
+thym_n5 <- RunUMAP(normalized_thym, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 5, # default is 30
+                           min.dist = 0.3) # default is 0.3)
+umap_thym_n5 <- DimPlot(thym_n5,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.2,0.3,0.4)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_thym_n5 + plot_annotation(title = "Canine Thymus, n.neighbors = 5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(thym_n5,
+            reduction = "umap",
+            features = c("CD34", "KIT", "CD44", "IL2RA", "CCR9", "DNTT", "RAG1", "RAG2", "CD4", "CD8A", "ZBTB7B", "IL7R", "NOTCH1", "PAX5", "LYZ")) + 
+  plot_annotation(title = "Canine Thymus Feature Expression, n.neighbors = 5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+`n.neighbors` = 50:
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 18, fig.height = 16}
+thym_n50 <- RunUMAP(normalized_thym, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 50, # default is 30
+                           min.dist = 0.3) # default is 0.3
+umap_thym_n50 <- DimPlot(thym_n50,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.2,0.3,0.4)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_thym_n50 + plot_annotation(title = "Canine Thymus, n.neighbors = 50", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(thym_n50,
+            reduction = "umap",
+            features = c("CD34", "KIT", "CD44", "IL2RA", "CCR9", "DNTT", "RAG1", "RAG2", "CD4", "CD8A", "ZBTB7B", "IL7R", "NOTCH1", "PAX5", "LYZ")) + 
+  plot_annotation(title = "Canine Thymus Feature Expression, n.neighbors = 50", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+## Effect of varying min.dist
+Controls how tightly the embedding is allowed to compress points together. Larger values ensure embedded points are more evenly distributed, while smaller values allow the algorithm to optimise more accurately with regard to local structure. Sensible values (according to Seurat docs) are in the range 0.001 to 0.5.
+
+`min.dist` = 0.001
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 18, fig.height = 16}
+thym_d001 <- RunUMAP(normalized_thym, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 30, # default is 30
+                           min.dist = 0.001) # default is 0.3
+umap_thym_d001 <- DimPlot(thym_d001,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.2,0.3,0.4)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_thym_d001 + plot_annotation(title = "Canine Thymus, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(thym_d001,
+            reduction = "umap",
+            features = c("CD34", "KIT", "CD44", "IL2RA", "CCR9", "DNTT", "RAG1", "RAG2", "CD4", "CD8A", "ZBTB7B", "IL7R", "NOTCH1", "PAX5", "LYZ")) + 
+  plot_annotation(title = "Canine Thymus Feature Expression, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+`min.dist` = 0.5
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 18, fig.height = 16}
+thym_d05 <- RunUMAP(normalized_thym, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 30, # default is 30
+                           min.dist = 0.5) # default is 0.3
+umap_thym_d05 <- DimPlot(thym_d05,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.2,0.3,0.4)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_thym_d05 + plot_annotation(title = "Canine Thymus, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(thym_d05,
+            reduction = "umap",
+            features = c("CD34", "KIT", "CD44", "IL2RA", "CCR9", "DNTT", "RAG1", "RAG2", "CD4", "CD8A", "ZBTB7B", "IL7R", "NOTCH1", "PAX5", "LYZ")) + 
+  plot_annotation(title = "Canine Thymus Feature Expression, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+## Effect of changing both n.neighbors and min.dist together
+`n.neighbors` = 5 and `min.dist` = 0.001:
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 18, fig.height = 16}
+thym_n5_d001 <- RunUMAP(normalized_thym, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 5, # default is 30
+                           min.dist = 0.001) # default is 0.3
+umap_thym_n5_d001 <- DimPlot(thym_n5_d001,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.2,0.3,0.4)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_thym_n5_d001 + plot_annotation(title = "Canine Thymus, n.neighbors = 5, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(thym_n5_d001,
+            reduction = "umap",
+            features = c("CD34", "KIT", "CD44", "IL2RA", "CCR9", "DNTT", "RAG1", "RAG2", "CD4", "CD8A", "ZBTB7B", "IL7R", "NOTCH1", "PAX5", "LYZ")) + 
+  plot_annotation(title = "Canine Thymus Feature Expression, n.neighbors = 5, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+`n.neighbors` = 50 and `min.dist` = 0.001:
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 18, fig.height = 16}
+thym_n50_d001 <- RunUMAP(normalized_thym, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 50, # default is 30
+                           min.dist = 0.001) # default is 0.3
+umap_thym_n50_d001 <- DimPlot(thym_n50_d001,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.2,0.3,0.4)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_thym_n50_d001 + plot_annotation(title = "Canine Thymus, n.neighbors = 50, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(thym_n50_d001,
+            reduction = "umap",
+            features = c("CD34", "KIT", "CD44", "IL2RA", "CCR9", "DNTT", "RAG1", "RAG2", "CD4", "CD8A", "ZBTB7B", "IL7R", "NOTCH1", "PAX5", "LYZ")) + 
+  plot_annotation(title = "Canine Thymus Feature Expression, n.neighbors = 50, min.dist = 0.001", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+`n.neighbors` = 5 and `min.dist` = 0.5:
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 18, fig.height = 16}
+thym_n5_d05 <- RunUMAP(normalized_thym, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 5, # default is 30
+                           min.dist = 0.5) # default is 0.3
+umap_thym_n5_d05 <- DimPlot(thym_n5_d05,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.2,0.3,0.4)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_thym_n5_d05 + plot_annotation(title = "Canine Thymus, n.neighbors = 5, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(thym_n5_d05,
+            reduction = "umap",
+            features = c("CD34", "KIT", "CD44", "IL2RA", "CCR9", "DNTT", "RAG1", "RAG2", "CD4", "CD8A", "ZBTB7B", "IL7R", "NOTCH1", "PAX5", "LYZ")) + 
+  plot_annotation(title = "Canine Thymus Feature Expression, n.neighbors = 5, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+`n.neighbors` = 50 and `min.dist` = 0.5:
+```{r, message=FALSE, warning=FALSE, results='hide', fig.width = 18, fig.height = 16}
+thym_n50_d05 <- RunUMAP(normalized_thym, 
+                           dims = 1:10, # replace with the PCs calculated above
+                           n.neighbors = 50, # default is 30
+                           min.dist = 0.5) # default is 0.3
+umap_thym_n50_d05 <- DimPlot(thym_n50_d05,
+                     reduction = "umap",
+                     ncol = 2,
+                     group.by=glue::glue("RNA_snn_res.{c(0.1,0.2,0.3,0.4)}"), # plot resolutions based on clustree results
+                     label = TRUE,
+                     label.size = 6)
+umap_thym_n50_d05 + plot_annotation(title = "Canine Thymus, n.neighbors = 50, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+### Feature plot
+```{r, message=FALSE, warning=FALSE, fig.width=20, fig.height=18}
+FeaturePlot(thym_n50_d05,
+            reduction = "umap",
+            features = c("CD34", "KIT", "CD44", "IL2RA", "CCR9", "DNTT", "RAG1", "RAG2", "CD4", "CD8A", "ZBTB7B", "IL7R", "NOTCH1", "PAX5", "LYZ")) + 
+  plot_annotation(title = "Canine Thymus Feature Expression, n.neighbors = 50, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+# Export data
+Export Seurat objects once final clustering parameters are decided.
 ```{r}
-saveRDS(normalized_ln, file="seurat_NormalizedAndClustered_LN.RData")
-saveRDS(normalized_thym, file="seurat_NormalizedAndClustered_THYM.RData")
+saveRDS(ln_def, file="LN_NormalizedAndClustered.RData")
+saveRDS(thym_n50_d05, file="THYM_NormalizedAndClustered.RData")
 ```
-
 
 # Citations
 ```{r citations}
