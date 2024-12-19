@@ -50,9 +50,6 @@ By default, identifies all positive and negative markers of a single cluster com
 ln_seurat <- FindClusters(ln_seurat, resolution = 0.1)
 ln_seurat <- RunUMAP(ln_seurat, dims = 1:10)
 ln.markers <- FindAllMarkers(ln_seurat, only.pos=TRUE)
-ln.markers %>%
-  group_by(cluster) %>%
-  dplyr::filter(avg_log2FC > 1)
 
 # export
 write.csv(ln.markers, file="LN_DEfeaturesByUMAPcluster_res0.1.csv")
@@ -66,7 +63,7 @@ DimPlot(ln_seurat,
 ```
 
 ## Top cluster markers
-```{r, fig.width = 18, fig.height = 8}
+```{r topClusterMarkers, fig.width = 18, fig.height = 8}
 key.genes <- ln.markers[!grepl("ENSCAFG", row.names(ln.markers)),]
 key.genes.sortedByPval <- key.genes[order(key.genes$p_val),]
 features <- key.genes.sortedByPval %>% group_by(cluster) %>% do(head(., n=5))
@@ -83,7 +80,7 @@ DotPlot(ln_seurat,
 
 # Feature plots
 Some of these markers were derived from a single-cell atlas of circulating canine leukocytes (https://github.com/dyammons/Canine_Leukocyte_scRNA).
-```{r, fig.width = 14, fig.height = 12}
+```{r FeaturePlotLN-CD4markers, fig.width = 14, fig.height = 12}
 FeaturePlot(ln_seurat, 
             reduction = "umap",
             ncol = 3,
@@ -92,7 +89,7 @@ FeaturePlot(ln_seurat,
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
-```{r, fig.height = 8, fig.width = 14}
+```{r FeaturePlotLN-CD8andNKmarkers, fig.height = 8, fig.width = 14}
 FeaturePlot(ln_seurat, 
             reduction = "umap",
             features = c("GNLY", "NKG7", "NCAM1", "KLRK1", "CD8A", "CD3E", "CD5"),
@@ -101,7 +98,7 @@ FeaturePlot(ln_seurat,
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
-```{r, fig.height = 8, fig.width = 10}
+```{r FeaturePlotLN-Bcellmarkers, fig.height = 8, fig.width = 10}
 FeaturePlot(ln_seurat, 
             reduction = "umap",
             features = c("MS4A1", "CD19", "PAX5", "IRF4")) +
@@ -109,7 +106,7 @@ FeaturePlot(ln_seurat,
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
-```{r, fig.height = 8, fig.width = 14}
+```{r FeaturePlotLN-MonoMacDCmarkers, fig.height = 8, fig.width = 14}
 FeaturePlot(ln_seurat, 
             reduction = "umap",
             ncol = 3,
@@ -118,7 +115,7 @@ FeaturePlot(ln_seurat,
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
-```{r, fig.height = 8, fig.width = 14}
+```{r FeaturePlotLN-GranulocyteMarkers, fig.height = 8, fig.width = 14}
 FeaturePlot(ln_seurat, 
             reduction = "umap",
             features = c("FCER1A", "MMP9", "CCR5", "CXCR2", "EPX", "MMP8", "S100A12", "SERPINA1"),
@@ -261,7 +258,7 @@ ln_seurat_cycle <- CellCycleScoring(ln_seurat,
 ```
 
 ## Visualize cycling cells on UMAP
-```{r}
+```{r CellCycleScoringUMAP-LN}
 ln_seurat_cycle <- RunPCA(ln_seurat_cycle, features = c(s.genes, g2m.genes))
 DimPlot(ln_seurat_cycle,
         group.by = "Phase",
@@ -274,7 +271,7 @@ DimPlot(ln_seurat_cycle,
 Module scoring the average expression levels of each cluster on a single-cell level, subtracted by the aggregated expression of control feature sets. All analyzed features are binned based on averaged expression, and the control features are randomly selected from each bin.
 Source: https://cells.ucsc.edu/?ds=pan-immune+global. The top 51 markers were exported from UCSC Cell Browser for each annotated cell type.
 
-```{r, warning = FALSE, message = FALSE, fig.width = 14, fig.height = 10}
+```{r moduleScoring-top51condeEtAlHumanImmuneAtlas, warning = FALSE, message = FALSE, fig.width = 16, fig.height = 12}
 # make gene lists
 human_ln_atlas_top51 <- read.csv("CondeEtAl_HumanImmuneCellAtlas_Global.csv")
 colnames(human_ln_atlas_top51)
@@ -290,10 +287,17 @@ for (column in colnames(human_ln_atlas_top51)){
   plot_list[[name]] <- modscoreplot # add plot to list
 }
 
-# split plot_list into groups of 10 and combine each group of 10 plots into a single layout
-plot_groups <- split(plot_list, ceiling(seq_along(plot_list) / 9))
+# split plot_list into groups of 6 and handle any remaining plots
+plot_groups <- split(plot_list, ceiling(seq_along(plot_list) / 6))
+
+# combined plot with dynamic number of columns/rows
+combine_plots <- function(group, ncol = 3){
+  n_plots <- length(group)
+  nrow <- ceiling(n_plots / ncol)
+  wrap_plots(group, ncol = ncol, nrow = nrow)
+}
 combined_plots <- lapply(plot_groups, function(group) {
-  wrap_plots(group, ncol = 3)
+  combine_plots(group, ncol = 3)
 })
 
 # display each combined plot
@@ -305,7 +309,7 @@ for (i in seq_along(combined_plots)) {
 # Module scoring for Ammons canine circulating leukocyte atlas
 Source: https://cells.ucsc.edu/?ds=canine-leukocyte-atlas+healthy 
 
-```{r, warning = FALSE, message = FALSE, fig.width = 16, fig.height = 10}
+```{r moduleScoring-top51ammonsCanineCircLeukAtlas, warning = FALSE, message = FALSE, fig.width = 16, fig.height = 12}
 # make gene lists
 ammonsk9_ln_atlas_top51 <- read.csv("Ammons_CanineCirculatingLeukocyteAtlas.csv")
 colnames(ammonsk9_ln_atlas_top51)
@@ -321,10 +325,17 @@ for (column in colnames(ammonsk9_ln_atlas_top51)){
   plot_list[[name]] <- modscoreplot # add plot to list
 }
 
-# split plot_list into groups of 10 and combine each group of 10 plots into a single layout
-plot_groups <- split(plot_list, ceiling(seq_along(plot_list) / 9))
+# split plot_list into groups of 6 and handle any remaining plots
+plot_groups <- split(plot_list, ceiling(seq_along(plot_list) / 6))
+
+# combined plot with dynamic number of columns/rows
+combine_plots <- function(group, ncol = 3){
+  n_plots <- length(group)
+  nrow <- ceiling(n_plots / ncol)
+  wrap_plots(group, ncol = ncol, nrow = nrow)
+}
 combined_plots <- lapply(plot_groups, function(group) {
-  wrap_plots(group, ncol = 3)
+  combine_plots(group, ncol = 3)
 })
 
 # display each combined plot
