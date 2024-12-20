@@ -1,0 +1,397 @@
+---
+title: "Thymus Single-Cell Cluster Annotation"
+author: "Eileen Owens"
+date: "2024-11-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,
+                      cache = TRUE,
+                      warning = FALSE,
+                      message = FALSE,
+                      keep_md = TRUE)
+```
+
+# Introduction
+The purpose of this script is to annotate single-cell RNA-seq clusters following filtering, normalization, and clustering of the data with Seurat. This script has been adapted from the Seurat documentation (https://satijalab.org/seurat/articles/pbmc3k_tutorial#assigning-cell-type-identity-to-clusters).
+
+# Software packages
+```{r software-load, results="hide", message=FALSE}
+library(Seurat)
+library(tidyverse)
+library(patchwork)
+library(pheatmap)
+library(RColorBrewer)
+library(SingleR)
+library(celldex) # To install: BiocManager::install("celldex")
+library(data.table)
+library(knitr)
+library(clusterProfiler)
+```
+
+# Data
+## Working directory
+```{r setwd}
+setwd("C:/Users/edlarsen/Documents/240828_scRNAseq/Cluster_Annotation")
+```
+
+## Filtered, normalized, and clustered Seurat object(s)
+```{r data-import}
+thym_seurat <- readRDS(file = "THYM_NormalizedAndClustered.RData")
+```
+
+# Differentially Expressed Features
+By default, identifies all positive and negative markers of a single cluster compared to all other cells.
+
+```{r FindAllMarkers-THYM, message=FALSE, fig.width = 8, fig.height = 6}
+
+thym_seurat <- FindClusters(thym_seurat, resolution = 0.2)
+thym_seurat <- RunUMAP(thym_seurat, dims = 1:10)
+thym.markers <- FindAllMarkers(thym_seurat, only.pos=TRUE)
+
+# Export
+write.csv(thym.markers, file="THYMUS_DEfeaturesByUMAPcluster_0.2.csv")
+
+# umap
+thym_seurat <- RunUMAP(thym_seurat, 
+                           dims = 1:10,
+                           n.neighbors = 50, # default is 30
+                           min.dist = 0.5) # default is 0.3
+
+DimPlot(thym_seurat,
+        reduction = "umap",
+                   label = TRUE,
+                   label.size = 6) + 
+  plot_annotation(title = "Canine Thymus, Resolution: 0.2, \nn.neighbors = 50, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
+```
+
+## Top cluster markers
+```{r topClusterMarkers, fig.width = 18, fig.height = 8}
+key.genes <- thym.markers[!grepl("ENSCAFG", row.names(thym.markers)),]
+key.genes.sortedByPval <- key.genes[order(key.genes$p_val),]
+features <- key.genes.sortedByPval %>% group_by(cluster) %>% do(head(., n=5))
+features <- as.data.frame(features[!duplicated(features$gene),]) # prioritize unique clusters
+
+DotPlot(thym_seurat,
+        assay = "RNA",
+        features = rev(features$gene),
+        scale = TRUE) + 
+  geom_point(aes(size=pct.exp), shape = 21, colour="black", stroke=0.5) +
+  labs(y = "Cluster") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+# Feature plots
+Notes:
+* CD34 expression is expected only in the earliest stages of thymocyte development.
+* In humans, CD44 is expressed on DN1 and DN2 thymocytes, then downregulated in DN3 thymocytes before being expressed again in SP thymocytes. 
+* CD25 (IL2RA) is expressed in DN2 and DN3 thymocytes, but not DN1 or DN4 thymocytes.
+* CCR9 is expressed by most DP thymocytes but not DN thymocytes, and it is subsequently downregulated with the transition from the DP stage to SP stages of thymocyte development.
+* In cynomolgus monkeys, CD1 is expressed in DN and DP thymocytes, then downregulated as cells progressed to the SP stages.
+
+Markers for DN T cells, naive CD4+ and CD8+ T cells, and CD34+ unclassified cells were derived from a single-cell atlas of circulating canine leukocytes (https://github.com/dyammons/Canine_Leukocyte_scRNA).
+
+```{r FeaturePlot-THYM-Early, fig.width=20, fig.height=14}
+FeaturePlot(thym_seurat,
+            reduction = "umap",
+            features = c("CD34", "KIT", "CD44", "NOTCH1", "IL2RA", "CCR9", "DNTT", "RAG1", "RAG2", "CD1C")) + 
+  plot_annotation(title = "Canine Thymus Precursor & Early Thymocyte Feature Expression", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+```{r FeaturePlotTHYM-Mature, fig.width=20, fig.height=14}
+FeaturePlot(thym_seurat,
+            reduction = "umap",
+            features = c("CD3E", "CD5", "CD4", "CD8A", "FOXP3", "IL2RA", "IL7R", "GATA3", "TBX21", "RORC", "CCR5", "CD7")) + 
+  plot_annotation(title = "Canine Thymus Mature Thymocyte and T-cell Feature Expression", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+```{r FeaturePlotTHYM-CD34Unclassified, fig.height = 14, fig.width = 20}
+FeaturePlot(thym_seurat,
+            reduction = "umap",
+            features = c("TFPI", "ZNF521", "CD34", "NDST3", "GUCY1A1", "HPGD", "CLEC3B", "CLEC3B", "KIT", "CD109", "DNTT")) + 
+  plot_annotation(title = "Canine Thymus: Expression of Markers for CD34+ Unclassified Cells from Canine Circulating Leukocyte Atlas", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+```{r FeaturePlotTHYM-DNTmarkers, fig.height = 14, fig.width = 20}
+FeaturePlot(thym_seurat,
+            reduction = "umap",
+            features = c("KIAA0825", "TMEM132D", "KANK1", "NMB", "CTLA4", "SYNJ2", "BICDL1", "SLF1", "ID3", "KIAA1549")) + 
+  plot_annotation(title = "Canine Thymus: Expression of Markers for DN T-cells from Canine Circulating Leukocyte Atlas", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+```{r FeaturePlotTHYM-NaiveCD8markers, fig.height = 12, fig.width = 10}
+FeaturePlot(thym_seurat,
+            reduction = "umap",
+            features = c("CD8A", "ITGA1", "PTGDR", "IL2RB", "ADGRG1", "NBEA")) + 
+  plot_annotation(title = "Canine Thymus: Expression of Markers for Naive CD8 T-cells \nfrom Canine Circulating Leukocyte Atlas", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+```{r FeaturePlotTHYM-NaiveCD4markers, fig.height = 12, fig.width = 14}
+FeaturePlot(thym_seurat,
+            reduction = "umap",
+            features = c("CD4", "LEF1", "CSTA", "RGS10", "ZNF536", "CCR7", "COL6A5", "LTB", "TNFSF8")) + 
+  plot_annotation(title = "Canine Thymus: Expression of Markers for Naive CD4 T-cells \nfrom Canine Circulating Leukocyte Atlas", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+
+
+```{r FeaturePlotTHYM-nonTcellfeatures, fig.height = 8, fig.width = 10}
+FeaturePlot(thym_seurat, 
+            reduction = "umap",
+            features = c("PAX5", "LYZ", "MMP8", "S100A12")) +
+  plot_annotation(title = "Canine Thymus Non-T-Cell Feature Expression", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+
+# Gene Set Enrichment Analysis
+Comparison with gene signatures from a human single-cell thymus atlas (https://cells.ucsc.edu/?ds=fetal-thymus+all; https://www.science.org/doi/10.1126/science.aay3224).
+
+Note about some of the cell types in this atlas:
+* T agonist = a population that shared expression modules with differentiating Treg cells, but not with terminally differentiated Treg cells. This population was defined by expression of a noncoding RNA, MIR155HG.
+* MEMP = megakaryocyte/erythrocyte/mast cell progenitor
+* NMP = neutrophil-myeloid progenitor
+* Some cell types were annotated on multiple UMAPs (i.e., a UMAP of all thymus cells together vs a UMAP of just T-cell populations). These are distinguished by a Roman numeral (e.g., Early Thymic Progenitor and Early Thymic Progenitor II). These numerals do not imply any biologic difference, such as later stages of differentiation.
+
+```{r GSEA, warning=FALSE, message=FALSE}
+# significant results only
+sig.thym.markers <- subset(thym.markers, p_val_adj < 0.05)
+
+# loop through each cluster and create a ranked gene list for each
+for (clust in unique(sig.thym.markers$cluster)){
+  name <- paste("cluster", clust, "rankedGenes", sep="")
+  rankedGenes <- sig.thym.markers %>%
+    dplyr::filter(cluster == clust) %>%
+    dplyr::select(gene, avg_log2FC) %>%
+    arrange(desc(avg_log2FC))
+  rankedGeneList <- rankedGenes$avg_log2FC
+  names(rankedGeneList) <- rankedGenes$gene
+  assign(name, rankedGeneList)
+}
+
+# import gmt file(s)
+## one gmt file
+gmt <- read.gmt("HumanThymusClusters.gmt")
+
+## multiple gmt files
+# gmtFiles <- list.files(pattern = "\\.gmt", full.names = TRUE) # Get list of all .gmt files in this directory
+# gmtTables <- lapply(gmtFiles, read.gmt) # Apply the read.gmt function to the list of .gmt files and save as a variable
+# gmt <- do.call(rbind, gmtTables) # Rbind files
+
+# loop through each cluster's ranked gene list and run GSEA for gene lists in the gmt file(s) on each
+for (geneList in ls(pattern = "cluster")){
+  name <- paste(geneList, "GSEA", sep="_")
+  input <- get(geneList)
+  gse <- GSEA(input,
+              exponent = 1,
+              pvalueCutoff = 1,
+              pAdjustMethod = "BH",
+              TERM2GENE = gmt,
+              verbose = TRUE,
+              by = "fgsea")
+  assign(name, gse)
+}
+
+# Remove any objects with no significantly enriched gene sets from the global environment
+for (GSEAresult in ls(pattern = "_GSEA")){
+  obj <- get(GSEAresult)
+  res <- obj@result
+  if (nrow(res) == 0) {
+    rm(list = ls(pattern = GSEAresult))
+  }
+}
+
+
+```
+
+```{r GSEAplots, message=FALSE, fig.width = 20, fig.height = 16, warning=FALSE}
+# Loop through each GSEA object, export results as csv, and plot results as an enrichment dot plot
+plot_list <- list() # initiate empty list for individual plots
+
+for (GSEAresult in ls(pattern = "_GSEA")){
+  name <- paste(GSEAresult)
+  obj <- get(GSEAresult)
+  write.csv(obj, file=paste(name, "csv", sep="."))
+  
+  eplot <- obj %>%
+    dotplot(showCategory = 10, x = "NES") +
+    scale_color_viridis_c(name = "Adjusted\nP-value",
+                          option = "H") +
+    scale_y_discrete(labels = ~ str_wrap(gsub('_', ' ', .x), 40)) +
+    geom_vline(xintercept = 0, linetype = 2) +
+    labs(title = name, y = "Gene Set") +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  plot_list[[name]] <- eplot # add plot to list
+}
+
+# combine plots into single layout
+combined_plot <- wrap_plots(plot_list, ncol = 3)
+print(combined_plot)
+```
+
+# Differential Expression Analysis
+```{r DEG, results="hide", message = FALSE, warning = FALSE}
+# find markers distinguishing clusters
+## cluster 0 vs 1
+Cluster0_vs_Cluster1 <- FindMarkers(thym_seurat, ident.1 = 0, ident.2 = 1)
+write.csv(Cluster0_vs_Cluster1, file="thym_cluster0vscluster1.csv")
+Cluster0_vs_Cluster1 %>%
+  dplyr::arrange(avg_log2FC)
+
+## cluster 1 vs 0
+Cluster1_vs_Cluster0 <- FindMarkers(thym_seurat, ident.1 = 1, ident.2 = 0)
+write.csv(Cluster1_vs_Cluster0, file="thym_cluster1vscluster0.csv")
+Cluster1_vs_Cluster0 %>%
+  dplyr::arrange(avg_log2FC)
+
+## cluster 4 vs 8
+Cluster4_vs_Cluster8 <- FindMarkers(thym_seurat, ident.1 = 4, ident.2 = 8)
+write.csv(Cluster4_vs_Cluster8, file="thym_cluster4vscluster8.csv")
+Cluster4_vs_Cluster8 %>%
+  dplyr::arrange(avg_log2FC)
+
+## cluster 5 vs 6
+Cluster5_vs_Cluster6 <- FindMarkers(thym_seurat, ident.1 = 4, ident.2 = 8)
+write.csv(Cluster5_vs_Cluster6, file="thym_cluster5vscluster6.csv")
+Cluster5_vs_Cluster6 %>%
+  dplyr::arrange(avg_log2FC)
+```
+
+
+```{r kables}
+kable(head(Cluster0_vs_Cluster1, n=20), caption = "Cluster 0 vs Cluster 1, Canine Thymus, Resolution: 0.2")
+kable(head(Cluster1_vs_Cluster0, n=20), caption = "Cluster 1 vs Cluster 0, Canine Thymus, Resolution: 0.2")
+kable(head(Cluster4_vs_Cluster8, n=20), caption = "Cluster 4 vs Cluster 8, Canine Thymus, Resolution: 0.2")
+kable(head(Cluster5_vs_Cluster6, n=20), caption = "Cluster 5 vs Cluster 6, Canine Thymus, Resolution: 0.2")
+```
+
+# Cell-Cycle Scoring
+See if cluster differences are associated with differences in cell proliferation.
+
+## Assign Cell-Cycle Scores
+Each cell will be assigned a score based on its expression of G2/M and S phase markers. The CellCycleStoring() function stores S and G2/M scores in object metadata, along with the predicted classification of each cell in either G2/M, S, or G1 phase.
+```{r cell-cycle}
+# segregate G2/M phase and S phase markers from Seurat's built-in list of cell cycle markers
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+# assign each cell a score based on expression of G2/M and S phase markers
+thym_seurat_cycle <- CellCycleScoring(thym_seurat,
+                                s.features = s.genes, 
+                                g2m.features = g2m.genes, 
+                                set.ident = TRUE)
+```
+
+## Visualize cycling cells on UMAP
+```{r CellCycleScoringUMAP}
+thym_seurat_cycle <- RunPCA(thym_seurat_cycle, features = c(s.genes, g2m.genes))
+DimPlot(thym_seurat_cycle,
+        group.by = "Phase",
+        reduction = "umap",
+        pt.size=0.5) + 
+  ggtitle("Cell Cycle Scoring: Canine Thymus")
+```
+
+# Module scoring for Park et al. human thymus feature expression
+Calculates the average expression levels of each cluster on a single-cell level, subtracted by the aggregated expression of control feature sets. All analyzed features are binned based on averaged expression, and the control features are randomly selected from each bin.
+
+## Top 20 marker genes for each cell type in human thymus atlas
+Source: Park et al., Supplementary Table 4 (https://www.science.org/doi/10.1126/science.aay3224#supplementary-materials)
+```{r moduleScoring-top20parkEtAlHumanThymusAtlas, warning = FALSE, fig.width = 16, fig.height = 8, message = FALSE}
+# make gene lists
+human_thymus_atlas_top20 <- read.csv("Parketal_SupTable4_Top20MarkersForCellTypes.csv")
+colnames(human_thymus_atlas_top20)
+
+plot_list <- list() # initiate empty list for individual plots
+
+for (column in colnames(human_thymus_atlas_top20)){
+  genes <- list(human_thymus_atlas_top20[[column]])
+  name <- paste(column, "Score", sep="_")
+  thym_seurat <- AddModuleScore(thym_seurat, features = genes, name = name)
+  newname <- paste(name, "1", sep="")
+  plotname <- paste(name, "modscoreplot", sep="_")
+  modscoreplot <- FeaturePlot(thym_seurat, features = newname) + scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+  plot_list[[name]] <- modscoreplot # add plot to list
+}
+
+# split plot_list into groups of 4 and handle any remaining plots
+plot_groups <- split(plot_list, ceiling(seq_along(plot_list) / 6))
+
+# combined plot with dynamic number of columns/rows
+combine_plots <- function(group, ncol = 3){
+  n_plots <- length(group)
+  nrow <- ceiling(n_plots / ncol)
+  wrap_plots(group, ncol = ncol, nrow = nrow)
+}
+combined_plots <- lapply(plot_groups, function(group) {
+  combine_plots(group, ncol = 3)
+})
+
+# display each combined plot
+for (i in seq_along(combined_plots)) {
+  print(combined_plots[[i]])
+}
+```
+
+## Top 51 marker genes for each cell type in human thymus atlas
+Source: Park et al. data accessed through UCSC Cell Browser
+```{r moduleScoring-top51parkEtAlHumanThymusAtlas, warning = FALSE, message = FALSE, fig.width = 16, fig.height = 12}
+# make gene lists
+human_thymus_atlas_top51 <- read.csv("Parketal_Top51DEGenesForThymusClusters_fromUCSCCellBrowser.csv")
+colnames(human_thymus_atlas_top51)
+
+plot_list <- list() # initiate empty list for individual plots
+
+for (column in colnames(human_thymus_atlas_top51)){
+  genes <- list(human_thymus_atlas_top51[[column]])
+  name <- paste(column, "Score", sep="_")
+  thym_seurat <- AddModuleScore(thym_seurat, features = genes, name = name)
+  newname <- paste(name, "1", sep="")
+  modscoreplot <- FeaturePlot(thym_seurat, features = newname) + scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+  plot_list[[name]] <- modscoreplot # add plot to list
+}
+
+# split plot_list into groups of 6 and handle any remaining plots
+plot_groups <- split(plot_list, ceiling(seq_along(plot_list) / 6))
+
+# combined plot with dynamic number of columns/rows
+combine_plots <- function(group, ncol = 3){
+  n_plots <- length(group)
+  nrow <- ceiling(n_plots / ncol)
+  wrap_plots(group, ncol = ncol, nrow = nrow)
+}
+combined_plots <- lapply(plot_groups, function(group) {
+  combine_plots(group, ncol = 3)
+})
+
+# display each combined plot
+for (i in seq_along(combined_plots)) {
+  print(combined_plots[[i]])
+}
+```
+
+# Assigning cell type identity to clusters
+To be done once confident cluster assignment has been achieved.
+```{r clustID-thym, fig.width = 10, fig.height = 8}
+new.thym.cluster.ids <- c("T0_DP", "T1_DP", "T2_EarlySP", "T3_DN", "T4_Cycling", "T5_CD4SP", "T6_CD8SP", "T7_Bcell", "T8_Cycling", "T9_MonoMacDC", "T10_Granulocytes")
+names(new.thym.cluster.ids) <- levels(thym_seurat)
+thym_seurat <- RenameIdents(thym_seurat, new.thym.cluster.ids)
+DimPlot(thym_seurat, reduction = "umap", label = TRUE, label.size = 3, label.box = TRUE, pt.size = 0.5) + ggtitle("Canine Thymus, Resolution: 0.2")
+saveRDS(thym_seurat, file="THYM_Annotated.RData")
+```
+
+# Citations
+```{r citations}
+sessionInfo()
+citation()
+```
