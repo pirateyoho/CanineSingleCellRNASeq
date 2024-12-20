@@ -85,8 +85,8 @@ unique(ref_bpe$label.main)
 ref_bpe <- ref_bpe[,grepl("Neutrophils|Macrophages|Monocytes|Erythrocytes|HSC|Endothelial cells|CD4+ T-cells|DC|CD8+ T-cells|Eosinophils|NK cells|B-cells|Fibroblasts", ref_bpe$label.main)]
 
 # extract normalized counts from Seurat object
-norm_counts_ln <- LayerData(ln_seurat_0.3, assay = "RNA", layer = "data")
-norm_counts_thym <- LayerData(thym_seurat_0.3, assay = "RNA", layer = "data")
+norm_counts_ln <- LayerData(ln_seurat, assay = "RNA", layer = "data")
+norm_counts_thym <- LayerData(thym_seurat, assay = "RNA", layer = "data")
 
 # use singleR function to annotate cells with labels from reference
 bpe_ln <- SingleR(test=norm_counts_ln, ref=ref_bpe, labels=ref_bpe$label.main)
@@ -170,8 +170,8 @@ plotDeltaDistribution(hpca_thym, ncol = 5, dots.on.top = FALSE) + ggtitle("Canin
 ref_hpca_fine <- celldex::HumanPrimaryCellAtlasData()
 
 # extract normalized counts from Seurat object
-norm_counts_ln <- LayerData(ln_seurat_0.3, assay = "RNA", layer = "data")
-norm_counts_thym <- LayerData(thym_seurat_0.3, assay = "RNA", layer = "data")
+norm_counts_ln <- LayerData(ln_seurat, assay = "RNA", layer = "data")
+norm_counts_thym <- LayerData(thym_seurat, assay = "RNA", layer = "data")
 
 # use singleR function to annotate cells with labels from reference
 hpca_ln_fine <- SingleR(test=norm_counts_ln, ref=ref_hpca_fine, labels=ref_hpca_fine$label.fine)
@@ -207,46 +207,46 @@ plotDeltaDistribution(hpca_thym_fine, ncol = 5, dots.on.top = FALSE) + ggtitle("
 # Add SingleR predictions to Seurat object
 ## Blueprint and ENCODE Data
 ```{r umap-bpe-ln, fig.height=6}
-ln_seurat_0.3 <- AddMetaData(ln_seurat_0.3, bpe_ln$pruned.labels, col.name = "SingleR_BPE")
+ln_seurat <- AddMetaData(ln_seurat, bpe_ln$pruned.labels, col.name = "SingleR_BPE")
 
-ln_seurat_0.3 <- SetIdent(ln_seurat_0.3, value = "SingleR_BPE")
-DimPlot(ln_seurat_0.3, label = T, repel = T, label.size = 3) + NoLegend() + ggtitle("Blueprint and ENCODE Annotations: Canine Lymph Node")
+ln_seurat <- SetIdent(ln_seurat, value = "SingleR_BPE")
+DimPlot(ln_seurat, label = T, repel = T, label.size = 3) + NoLegend() + ggtitle("Blueprint and ENCODE Annotations: Canine Lymph Node")
 ```
 
 ```{r umap-bpe-thym, fig.height=6}
-thym_seurat_0.3 <- AddMetaData(thym_seurat_0.3, bpe_thym$pruned.labels, col.name = "SingleR_BPE")
+thym_seurat <- AddMetaData(thym_seurat, bpe_thym$pruned.labels, col.name = "SingleR_BPE")
 
-thym_seurat_0.3 <- SetIdent(thym_seurat_0.3, value = "SingleR_BPE")
-DimPlot(thym_seurat_0.3, label = T, repel = T, label.size = 3) + NoLegend() + ggtitle("Blueprint and ENCODE Annotations: Canine Thymus")
+thym_seurat <- SetIdent(thym_seurat, value = "SingleR_BPE")
+DimPlot(thym_seurat, label = T, repel = T, label.size = 3) + NoLegend() + ggtitle("Blueprint and ENCODE Annotations: Canine Thymus")
 ```
 
 ## Human Primary Cell Atlas Data
 ```{r umap-hpca-ln, fig.height=6}
-ln_seurat_0.3 <- AddMetaData(ln_seurat_0.3, hpca_ln$pruned.labels, col.name = "SingleR_HPCA")
+ln_seurat <- AddMetaData(ln_seurat, hpca_ln$pruned.labels, col.name = "SingleR_HPCA")
 
-ln_seurat_0.3 <- SetIdent(ln_seurat_0.3, value = "SingleR_HPCA")
-DimPlot(ln_seurat_0.3, label = T, repel = T, label.size = 3) + NoLegend() + ggtitle("Human Primary Cell Atlas Annotations - Main Labels: \nCanine Lymph Node")
+ln_seurat <- SetIdent(ln_seurat, value = "SingleR_HPCA")
+DimPlot(ln_seurat, label = T, repel = T, label.size = 3) + NoLegend() + ggtitle("Human Primary Cell Atlas Annotations - Main Labels: \nCanine Lymph Node")
 ```
 
 ```{r umap-hpca-ln-fine, fig.height=20, fig.width = 20}
-ln_seurat_0.3 <- AddMetaData(ln_seurat_0.3, hpca_ln_fine$pruned.labels, col.name = "SingleR_HPCA")
+ln_seurat <- AddMetaData(ln_seurat, hpca_ln_fine$pruned.labels, col.name = "SingleR_HPCA")
 
-ln_seurat_0.3 <- SetIdent(ln_seurat_0.3, value = "SingleR_HPCA")
-DimPlot(ln_seurat_0.3, label = T, repel = T, label.size = 5) + NoLegend() + ggtitle("Human Primary Cell Atlas Annotations - Fine Labels: Canine Lymph Node")
+ln_seurat <- SetIdent(ln_seurat, value = "SingleR_HPCA")
+DimPlot(ln_seurat, label = T, repel = T, label.size = 5) + NoLegend() + ggtitle("Human Primary Cell Atlas Annotations - Fine Labels: Canine Lymph Node")
 ```
 
 ```{r umap-hpca-thym, fig.height=6}
-thym_seurat_0.3 <- AddMetaData(thym_seurat_0.3, hpca_thym$pruned.labels, col.name = "SingleR_HPCA")
+thym_seurat <- AddMetaData(thym_seurat, hpca_thym$pruned.labels, col.name = "SingleR_HPCA")
 
-thym_seurat_0.3 <- SetIdent(thym_seurat_0.3, value = "SingleR_HPCA")
-DimPlot(thym_seurat_0.3, label = T, repel = T, label.size = 3) + NoLegend() + ggtitle("Human Primary Cell Atlas Annotations - Main Labels: Canine Thymus")
+thym_seurat <- SetIdent(thym_seurat, value = "SingleR_HPCA")
+DimPlot(thym_seurat, label = T, repel = T, label.size = 3) + NoLegend() + ggtitle("Human Primary Cell Atlas Annotations - Main Labels: Canine Thymus")
 ```
 
 ```{r umap-hpca-thym-fine, fig.height=10}
-thym_seurat_0.3 <- AddMetaData(thym_seurat_0.3, hpca_thym_fine$pruned.labels, col.name = "SingleR_HPCA")
+thym_seurat <- AddMetaData(thym_seurat, hpca_thym_fine$pruned.labels, col.name = "SingleR_HPCA")
 
-thym_seurat_0.3 <- SetIdent(thym_seurat_0.3, value = "SingleR_HPCA")
-DimPlot(thym_seurat_0.3, label = T, repel = T, label.size = 4) + NoLegend() + ggtitle("Human Primary Cell Atlas Annotations - Fine Labels: Canine Thymus")
+thym_seurat <- SetIdent(thym_seurat, value = "SingleR_HPCA")
+DimPlot(thym_seurat, label = T, repel = T, label.size = 4) + NoLegend() + ggtitle("Human Primary Cell Atlas Annotations - Fine Labels: Canine Thymus")
 ```
 
 # Citations
