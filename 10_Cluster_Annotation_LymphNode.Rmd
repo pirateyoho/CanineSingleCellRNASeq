@@ -1,5 +1,5 @@
 ---
-title: "Lymph Node Single-Cell Cluster Annotation"
+title: "Cluster Annotation with SingleR"
 author: "Eileen Owens"
 date: "2024-11-04"
 output: html_document
@@ -11,7 +11,6 @@ knitr::opts_chunk$set(dev = "png",
                       echo = TRUE,
                       cache = TRUE,
                       warning = FALSE,
-                      message = FALSE,
                       keep_md = TRUE)
 ```
 
@@ -28,8 +27,6 @@ library(RColorBrewer)
 library(SingleR)
 library(celldex) # To install: BiocManager::install("celldex")
 library(data.table)
-library(knitr)
-library(clusterProfiler)
 ```
 
 # Data
@@ -41,90 +38,37 @@ setwd("C:/Users/edlarsen/Documents/240828_scRNAseq/Cluster_Annotation")
 ## Filtered, normalized, and clustered Seurat object(s)
 ```{r data-import}
 ln_seurat <- readRDS(file = "../Normalization_and_Clustering/seurat_NormalizedAndClustered_LN.RData")
+thym_seurat <- readRDS(file = "../Normalization_and_Clustering/seurat_NormalizedAndClustered_THYM.RData")
 ```
 
 # Differentially Expressed Features
 By default, identifies all positive and negative markers of a single cluster compared to all other cells.
-
-```{r FindAllMarkers-LN, message=FALSE, fig.width = 8, fig.height = 6}
-
+```{r FindAllMarkers-LN, message=FALSE}
+# Lymph node
 ln_seurat <- FindClusters(ln_seurat, resolution = 0.1)
 ln_seurat <- RunUMAP(ln_seurat, dims = 1:10)
 ln.markers <- FindAllMarkers(ln_seurat, only.pos=TRUE)
-
-# export
-write.csv(ln.markers, file="LN_DEfeaturesByUMAPcluster_res0.1.csv")
-
-# umap
 DimPlot(ln_seurat,
         reduction = "umap",
                    label = TRUE,
                    label.size = 6) + 
   plot_annotation(title = "Canine Lymph Node, Resolution: 0.1", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
-```
 
-## Top cluster markers
-```{r topClusterMarkers, fig.width = 18, fig.height = 8}
-key.genes <- ln.markers[!grepl("ENSCAFG", row.names(ln.markers)),]
-key.genes.sortedByPval <- key.genes[order(key.genes$p_val),]
-features <- key.genes.sortedByPval %>% group_by(cluster) %>% do(head(., n=5))
-features <- as.data.frame(features[!duplicated(features$gene),]) # prioritize unique clusters
+# Thymus
+thym_seurat <- FindClusters(thym_seurat, resolution = 0.2)
+thym_seurat <- RunUMAP(thym_seurat, dims = 1:10)
+thym.markers <- FindAllMarkers(thym_seurat, only.pos=TRUE)
+thym_seurat <- RunUMAP(thym_seurat, 
+                           dims = 1:10,
+                           n.neighbors = 50, # default is 30
+                           min.dist = 0.5) # default is 0.3
 
-DotPlot(ln_seurat,
-        assay = "RNA",
-        features = rev(features$gene),
-        scale = TRUE) + 
-  geom_point(aes(size=pct.exp), shape = 21, colour="black", stroke=0.5) +
-  labs(y = "Cluster") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+DimPlot(thym_seurat,
+        reduction = "umap",
+                   label = TRUE,
+                   label.size = 6) + 
+  plot_annotation(title = "Canine Thymus, Resolution: 0.2, \nn.neighbors = 50, min.dist = 0.5", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
 ```
-
-# Feature plots
-Some of these markers were derived from a single-cell atlas of circulating canine leukocytes (https://github.com/dyammons/Canine_Leukocyte_scRNA).
-```{r FeaturePlotLN-CD4markers, fig.width = 14, fig.height = 12}
-FeaturePlot(ln_seurat, 
-            reduction = "umap",
-            ncol = 3,
-            features = c("CD3E", "CD5", "CD4", "FOXP3", "IL2RA", "GATA3", "TBX21", "RORC")) +
-  plot_annotation(title = "Canine Lymph Node: Expression of Canonical CD4 T-cell Markers", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
-  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
-```
-
-```{r FeaturePlotLN-CD8andNKmarkers, fig.height = 8, fig.width = 14}
-FeaturePlot(ln_seurat, 
-            reduction = "umap",
-            features = c("GNLY", "NKG7", "NCAM1", "KLRK1", "CD8A", "CD3E", "CD5"),
-            ncol = 3) +
-  plot_annotation(title = "Canine Lymph Node: Expression of Canonical CD8 & NK Cell Markers", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
-  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
-```
-
-```{r FeaturePlotLN-Bcellmarkers, fig.height = 8, fig.width = 10}
-FeaturePlot(ln_seurat, 
-            reduction = "umap",
-            features = c("MS4A1", "CD19", "PAX5", "IRF4")) +
-  plot_annotation(title = "Canine Lymph Node: Expression of Canonical B-cell Markers", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
-  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
-```
-
-```{r FeaturePlotLN-MonoMacDCmarkers, fig.height = 8, fig.width = 14}
-FeaturePlot(ln_seurat, 
-            reduction = "umap",
-            ncol = 3,
-            features = c("LYZ", "FCER1A", "ITGAM", "CD163", "CD68")) +
-  plot_annotation(title = "Canine Lymph Node: Expression of Canonical Monocyte/Macrophage/DC Markers", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
-  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
-```
-
-```{r FeaturePlotLN-GranulocyteMarkers, fig.height = 8, fig.width = 14}
-FeaturePlot(ln_seurat, 
-            reduction = "umap",
-            features = c("FCER1A", "MMP9", "CCR5", "CXCR2", "EPX", "MMP8", "S100A12", "SERPINA1"),
-            ncol = 3) +
-  plot_annotation(title = "Canine Lymph Node: Expression of Canonical Granulocyte Markers", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
-  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
-```
-Note: Granulocytes are difficult to capture with single-cell RNA-seq experiments given their relatively low RNA content and relatively high levels of RNAses and other inhibitory compounds, resulting in fewer detectable transcripts.
 
 # Compare single-cell expression profiles with previously annotated reference datasets using SingleR method
 SingleR is a computational method using reference transcriptomic datasets of pure cell types for unbiased cell type recognition in single-cell RNA-seq data. The SingleR method assigns labels to cells based on the reference sample with the highest Spearman rank correlations, using only the marker genes between pairs of labels to focus on the relevant differences between cell types. It also performs a fine-tuning step for each cell, where the correlations are recomputed with just the marker genes for the top-scoring labels. This aims to resolve any ambiguity between those labels by removing noise from irrelevant markers for other labels.
@@ -143,15 +87,15 @@ ref_bpe <- ref_bpe[,grepl("Neutrophils|Macrophages|Monocytes|Erythrocytes|HSC|En
 
 # extract normalized counts from Seurat object
 norm_counts_ln <- LayerData(ln_seurat, assay = "RNA", layer = "data")
-norm_counts_ln <- LayerData(ln_seurat, assay = "RNA", layer = "data")
+norm_counts_thym <- LayerData(thym_seurat, assay = "RNA", layer = "data")
 
 # use singleR function to annotate cells with labels from reference
 bpe_ln <- SingleR(test=norm_counts_ln, ref=ref_bpe, labels=ref_bpe$label.main)
-bpe_ln <- SingleR(test=norm_counts_ln, ref=ref_bpe, labels=ref_bpe$label.main)
+bpe_thym <- SingleR(test=norm_counts_thym, ref=ref_bpe, labels=ref_bpe$label.main)
 paste("Lymph node:")
 table(bpe_ln$labels)
-paste("lnus:")
-table(bpe_ln$labels)
+paste("Thymus:")
+table(bpe_thym$labels)
 ```
 
 ### Inspect quality of predictions
@@ -160,6 +104,10 @@ Each column in the heatmap represents a cell. Reference labels on y-axis. We exp
 If prediction for a certain cell is ambiguous, it will have high scores (yellow) for many cell identities.
 ```{r singleR-bpe-heatmap-ln}
 plotScoreHeatmap(bpe_ln)
+```
+
+```{r singleR-bpe-heatmap-thym}
+plotScoreHeatmap(bpe_thym)
 ```
 
 #### Delta distribution
@@ -172,10 +120,16 @@ The 'cleaner' results are found in the pruned_labels column, cells that have del
 # The number of cells assigned NA values (deltas too small) will be tallied in the TRUE column
 paste("Pruned cells - Lymph node:")
 summary(is.na(bpe_ln$pruned.labels))
+paste("Pruned cells - Thymus:")
+summary(is.na(bpe_thym$pruned.labels))
 ```
 
 ```{r bpe-ln-delta-plot, fig.height = 10, fig.width = 8}
 plotDeltaDistribution(bpe_ln, ncol = 4, dots.on.top = FALSE) + ggtitle("Canine Lymph Node Delta Values for Blueprint and ENCODE Annotations")
+```
+
+```{r bpe-thym-delta-plot, fig.height = 10, fig.width = 8}
+plotDeltaDistribution(bpe_thym, ncol = 4, dots.on.top = FALSE) + ggtitle("Canine Thymus Delta Values for Blueprint and ENCODE Annotations")
 ```
 
 ## Human Primary Cell Atlas Data
@@ -189,8 +143,7 @@ ref_hpca <- ref_hpca[,grepl("DC|BM & Prog.|Embryonic_stem_cells|Endothelial_cell
 
 # use singleR function to annotate cells with labels from reference
 hpca_ln <- SingleR(test=norm_counts_ln, ref=ref_hpca, labels=ref_hpca$label.main)
-paste("Lymph node:")
-table(hpca_ln$labels)
+hpca_thym <- SingleR(test=norm_counts_thym, ref=ref_hpca, labels=ref_hpca$label.main)
 ```
 
 ### Inspect quality of predictions
@@ -199,15 +152,23 @@ table(hpca_ln$labels)
 plotScoreHeatmap(hpca_ln)
 ```
 
+```{r singleR-hpca-heatmap-thym}
+plotScoreHeatmap(hpca_thym)
+```
+
 #### Delta distribution
 ```{r pruned-cells-hpca}
 # The number of cells assigned NA values (deltas too small) will be tallied in the TRUE column
-paste("Pruned cells - Lymph node:")
-summary(is.na(hpca_ln$pruned.labels))
+paste("Pruned cells - Lymph node:", summary(is.na(hpca_ln$pruned.labels)))
+paste("Pruned cells - Thymus:", summary(is.na(hpca_thym$pruned.labels)))
 ```
 
 ```{r hpca-ln-delta-plot, fig.height = 10, fig.width = 8}
 plotDeltaDistribution(hpca_ln, ncol = 4, dots.on.top = FALSE) + ggtitle("Canine Lymph Node Delta Values for Human Primary Cell Atlas Annotations")
+```
+
+```{r hpca-thym-delta-plot, fig.height = 10, fig.width = 8, warning = FALSE}
+plotDeltaDistribution(hpca_thym, ncol = 5, dots.on.top = FALSE) + ggtitle("Canine Thymus Delta Values for Human Primary Cell Atlas Annotations")
 ```
 
 ### Using fine labels
@@ -217,11 +178,11 @@ ref_hpca_fine <- celldex::HumanPrimaryCellAtlasData()
 
 # extract normalized counts from Seurat object
 norm_counts_ln <- LayerData(ln_seurat, assay = "RNA", layer = "data")
+norm_counts_thym <- LayerData(thym_seurat, assay = "RNA", layer = "data")
 
 # use singleR function to annotate cells with labels from reference
 hpca_ln_fine <- SingleR(test=norm_counts_ln, ref=ref_hpca_fine, labels=ref_hpca_fine$label.fine)
-paste("Lymph node:")
-table(hpca_ln_fine$labels)
+hpca_thym_fine <- SingleR(test=norm_counts_thym, ref=ref_hpca_fine, labels=ref_hpca_fine$label.fine)
 ```
 
 ### Inspect quality of predictions
@@ -230,130 +191,71 @@ table(hpca_ln_fine$labels)
 plotScoreHeatmap(hpca_ln_fine)
 ```
 
+```{r singleR-hpcafine-heatmap-thym, fig.width = 16}
+plotScoreHeatmap(hpca_thym_fine)
+```
+
 #### Delta distribution
 ```{r pruned-cells-hpcafine}
 # The number of cells assigned NA values (deltas too small) will be tallied in the TRUE column
 paste("Pruned cells - Lymph node:")
 summary(is.na(hpca_ln_fine$pruned.labels))
+paste("Pruned cells - Thymus:")
+summary(is.na(hpca_thym_fine$pruned.labels))
 ```
 
 ```{r hpcafine-ln-delta-plot, fig.height = 20, fig.width = 14}
 plotDeltaDistribution(hpca_ln_fine, ncol = 6, dots.on.top = FALSE) + ggtitle("Canine Lymph Node Delta Values for Human Primary Cell Atlas Annotations")
 ```
 
-# Cell-Cycle Scoring
-See if cluster differences are associated with differences in cell proliferation.
-
-## Assign Cell-Cycle Scores
-Each cell will be assigned a score based on its expression of G2/M and S phase markers. The CellCycleStoring() function stores S and G2/M scores in object metadata, along with the predicted classification of each cell in either G2/M, S, or G1 phase.
-```{r cell-cycle}
-# segregate G2/M phase and S phase markers from Seurat's built-in list of cell cycle markers
-s.genes <- cc.genes$s.genes
-g2m.genes <- cc.genes$g2m.genes
-
-# assign each cell a score based on expression of G2/M and S phase markers
-ln_seurat_cycle <- CellCycleScoring(ln_seurat,
-                                s.features = s.genes, 
-                                g2m.features = g2m.genes, 
-                                set.ident = TRUE)
-```
-
-## Visualize cycling cells on UMAP
-```{r CellCycleScoringUMAP-LN}
-ln_seurat_cycle <- RunPCA(ln_seurat_cycle, features = c(s.genes, g2m.genes))
-DimPlot(ln_seurat_cycle,
-        group.by = "Phase",
-        reduction = "umap",
-        pt.size=0.5) + 
-  ggtitle("Cell Cycle Scoring: Canine ln")
-```
-
-# Module Scoring for Conde et al. human immune cell atlas
-Module scoring the average expression levels of each cluster on a single-cell level, subtracted by the aggregated expression of control feature sets. All analyzed features are binned based on averaged expression, and the control features are randomly selected from each bin.
-Source: https://cells.ucsc.edu/?ds=pan-immune+global. The top 51 markers were exported from UCSC Cell Browser for each annotated cell type.
-
-```{r moduleScoring-top51condeEtAlHumanImmuneAtlas, warning = FALSE, message = FALSE, fig.width = 16, fig.height = 12}
-# make gene lists
-human_ln_atlas_top51 <- read.csv("CondeEtAl_HumanImmuneCellAtlas_Global.csv")
-colnames(human_ln_atlas_top51)
-
-plot_list <- list() # initiate empty list for individual plots
-
-for (column in colnames(human_ln_atlas_top51)){
-  genes <- list(human_ln_atlas_top51[[column]])
-  name <- paste(column, "Score", sep="_")
-  ln_seurat <- AddModuleScore(ln_seurat, features = genes, name = name)
-  newname <- paste(name, "1", sep="")
-  modscoreplot <- FeaturePlot(ln_seurat, features = newname) + scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
-  plot_list[[name]] <- modscoreplot # add plot to list
-}
-
-# split plot_list into groups of 6 and handle any remaining plots
-plot_groups <- split(plot_list, ceiling(seq_along(plot_list) / 6))
-
-# combined plot with dynamic number of columns/rows
-combine_plots <- function(group, ncol = 3){
-  n_plots <- length(group)
-  nrow <- ceiling(n_plots / ncol)
-  wrap_plots(group, ncol = ncol, nrow = nrow)
-}
-combined_plots <- lapply(plot_groups, function(group) {
-  combine_plots(group, ncol = 3)
-})
-
-# display each combined plot
-for (i in seq_along(combined_plots)) {
-  print(combined_plots[[i]])
-}
-```
-
-# Module scoring for Ammons canine circulating leukocyte atlas
-Source: https://cells.ucsc.edu/?ds=canine-leukocyte-atlas+healthy 
-
-```{r moduleScoring-top51ammonsCanineCircLeukAtlas, warning = FALSE, message = FALSE, fig.width = 16, fig.height = 12}
-# make gene lists
-ammonsk9_ln_atlas_top51 <- read.csv("Ammons_CanineCirculatingLeukocyteAtlas.csv")
-colnames(ammonsk9_ln_atlas_top51)
-
-plot_list <- list() # initiate empty list for individual plots
-
-for (column in colnames(ammonsk9_ln_atlas_top51)){
-  genes <- list(ammonsk9_ln_atlas_top51[[column]])
-  name <- paste(column, "Score", sep="_")
-  ln_seurat <- AddModuleScore(ln_seurat, features = genes, name = name)
-  newname <- paste(name, "1", sep="")
-  modscoreplot <- FeaturePlot(ln_seurat, features = newname) + scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
-  plot_list[[name]] <- modscoreplot # add plot to list
-}
-
-# split plot_list into groups of 6 and handle any remaining plots
-plot_groups <- split(plot_list, ceiling(seq_along(plot_list) / 6))
-
-# combined plot with dynamic number of columns/rows
-combine_plots <- function(group, ncol = 3){
-  n_plots <- length(group)
-  nrow <- ceiling(n_plots / ncol)
-  wrap_plots(group, ncol = ncol, nrow = nrow)
-}
-combined_plots <- lapply(plot_groups, function(group) {
-  combine_plots(group, ncol = 3)
-})
-
-# display each combined plot
-for (i in seq_along(combined_plots)) {
-  print(combined_plots[[i]])
-}
+```{r hpcafine-thym-delta-plot, fig.height = 20, fig.width = 16, warning = FALSE}
+plotDeltaDistribution(hpca_thym_fine, ncol = 5, dots.on.top = FALSE) + ggtitle("Canine Thymus Delta Values for Human Primary Cell Atlas Annotations")
 ```
 
 
-# Assigning cell type identity to clusters
-To be done once confident cluster assignment has been achieved.
-```{r clustID-ln}
-new.ln.cluster.ids <- c("LN0_Tcell", "LN1_BCell", "LN2_Tcell", "LN3_Tcell", "LN4_CD8_NK", "LN5_BCell", "LN6_Cycling", "LN7_Myeloid", "LN8_PlasmaCell")
-names(new.ln.cluster.ids) <- levels(ln_seurat)
-ln_seurat <- RenameIdents(ln_seurat, new.ln.cluster.ids)
-DimPlot(ln_seurat, reduction = "umap", label = TRUE, pt.size = 0.5) + ggtitle("Canine Lymph Node, Resolution: 0.1")
-saveRDS(ln_seurat, file="LN_Annotated.RData")
+# Add SingleR predictions to Seurat object
+## Blueprint and ENCODE Data
+```{r umap-bpe-ln, fig.height=6}
+ln_seurat <- AddMetaData(ln_seurat, bpe_ln$pruned.labels, col.name = "SingleR_BPE")
+
+ln_seurat <- SetIdent(ln_seurat, value = "SingleR_BPE")
+DimPlot(ln_seurat, label = T, repel = T, label.size = 3) + NoLegend() + ggtitle("Blueprint and ENCODE Annotations: Canine Lymph Node")
+```
+
+```{r umap-bpe-thym, fig.height=6}
+thym_seurat <- AddMetaData(thym_seurat, bpe_thym$pruned.labels, col.name = "SingleR_BPE")
+
+thym_seurat <- SetIdent(thym_seurat, value = "SingleR_BPE")
+DimPlot(thym_seurat, label = T, repel = T, label.size = 3) + NoLegend() + ggtitle("Blueprint and ENCODE Annotations: Canine Thymus")
+```
+
+## Human Primary Cell Atlas Data
+```{r umap-hpca-ln, fig.height=6}
+ln_seurat <- AddMetaData(ln_seurat, hpca_ln$pruned.labels, col.name = "SingleR_HPCA")
+
+ln_seurat <- SetIdent(ln_seurat, value = "SingleR_HPCA")
+DimPlot(ln_seurat, label = T, repel = T, label.size = 3) + NoLegend() + ggtitle("Human Primary Cell Atlas Annotations - Main Labels: \nCanine Lymph Node")
+```
+
+```{r umap-hpca-ln-fine, fig.height=20, fig.width = 20}
+ln_seurat <- AddMetaData(ln_seurat, hpca_ln_fine$pruned.labels, col.name = "SingleR_HPCA")
+
+ln_seurat <- SetIdent(ln_seurat, value = "SingleR_HPCA")
+DimPlot(ln_seurat, label = T, repel = T, label.size = 5) + NoLegend() + ggtitle("Human Primary Cell Atlas Annotations - Fine Labels: Canine Lymph Node")
+```
+
+```{r umap-hpca-thym, fig.height=6}
+thym_seurat <- AddMetaData(thym_seurat, hpca_thym$pruned.labels, col.name = "SingleR_HPCA")
+
+thym_seurat <- SetIdent(thym_seurat, value = "SingleR_HPCA")
+DimPlot(thym_seurat, label = T, repel = T, label.size = 3) + NoLegend() + ggtitle("Human Primary Cell Atlas Annotations - Main Labels: Canine Thymus")
+```
+
+```{r umap-hpca-thym-fine, fig.height=10}
+thym_seurat <- AddMetaData(thym_seurat, hpca_thym_fine$pruned.labels, col.name = "SingleR_HPCA")
+
+thym_seurat <- SetIdent(thym_seurat, value = "SingleR_HPCA")
+DimPlot(thym_seurat, label = T, repel = T, label.size = 4) + NoLegend() + ggtitle("Human Primary Cell Atlas Annotations - Fine Labels: Canine Thymus")
 ```
 
 # Citations
