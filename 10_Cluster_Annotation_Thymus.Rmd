@@ -218,7 +218,7 @@ for (GSEAresult in ls(pattern = "_GSEA")){
 plot_list <- list() # initiate empty list for individual plots
 
 for (GSEAresult in ls(pattern = "_GSEA")){
-  name <- paste(GSEAresult)
+  name <- paste("thym", GSEAresult, sep="_")
   obj <- get(GSEAresult)
   write.csv(obj, file=paste(name, "csv", sep="."))
   
@@ -244,25 +244,25 @@ print(combined_plot)
 # find markers distinguishing clusters
 ## cluster 0 vs 1
 Cluster0_vs_Cluster1 <- FindMarkers(thym_seurat, ident.1 = 0, ident.2 = 1)
-write.csv(Cluster0_vs_Cluster1, file="thym_cluster0vscluster1.csv")
+write.csv(Cluster0_vs_Cluster1, file="thym_cluster0vscluster1_DEG.csv")
 Cluster0_vs_Cluster1 %>%
   dplyr::arrange(avg_log2FC)
 
 ## cluster 1 vs 0
 Cluster1_vs_Cluster0 <- FindMarkers(thym_seurat, ident.1 = 1, ident.2 = 0)
-write.csv(Cluster1_vs_Cluster0, file="thym_cluster1vscluster0.csv")
+write.csv(Cluster1_vs_Cluster0, file="thym_cluster1vscluster0_DEG.csv")
 Cluster1_vs_Cluster0 %>%
   dplyr::arrange(avg_log2FC)
 
 ## cluster 4 vs 8
 Cluster4_vs_Cluster8 <- FindMarkers(thym_seurat, ident.1 = 4, ident.2 = 8)
-write.csv(Cluster4_vs_Cluster8, file="thym_cluster4vscluster8.csv")
+write.csv(Cluster4_vs_Cluster8, file="thym_cluster4vscluster8_DEG.csv")
 Cluster4_vs_Cluster8 %>%
   dplyr::arrange(avg_log2FC)
 
 ## cluster 5 vs 6
 Cluster5_vs_Cluster6 <- FindMarkers(thym_seurat, ident.1 = 4, ident.2 = 8)
-write.csv(Cluster5_vs_Cluster6, file="thym_cluster5vscluster6.csv")
+write.csv(Cluster5_vs_Cluster6, file="thym_cluster5vscluster6_DEG.csv")
 Cluster5_vs_Cluster6 %>%
   dplyr::arrange(avg_log2FC)
 ```
