@@ -37,8 +37,8 @@ setwd("C:/Users/edlarsen/Documents/240828_scRNAseq/Cluster_Annotation")
 
 ## Filtered, normalized, and clustered Seurat object(s)
 ```{r data-import}
-ln_seurat <- readRDS(file = "../Normalization_and_Clustering/seurat_NormalizedAndClustered_LN.RData")
-thym_seurat <- readRDS(file = "../Normalization_and_Clustering/seurat_NormalizedAndClustered_THYM.RData")
+ln_seurat <- readRDS(file = "../Normalization_and_Clustering/LN_NormalizedAndClustered.RData.RData")
+thym_seurat <- readRDS(file = "../Normalization_and_Clustering/THYM_NormalizedAndClustered.RData")
 ```
 
 # Differentially Expressed Features
