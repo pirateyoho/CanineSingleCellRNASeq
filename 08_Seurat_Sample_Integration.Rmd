@@ -110,7 +110,6 @@ RPCA-based integration runs faster, and represents a more conservative approach 
 
 ```{r integration2-LN}
 
-#### Returns error: Error in UseMethod(generic = "Assays", object = object) : no applicable method for 'Assays' applied to an object of class "NULL"
 integ_ln <- IntegrateLayers(object = integ_ln,
                             method = CCAIntegration,
                             orig.reduction = "pca",
