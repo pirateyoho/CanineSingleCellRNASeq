@@ -10,6 +10,7 @@ knitr::opts_chunk$set(dev = "png",
                       dpi = 300,
                       echo = TRUE,
                       cache = TRUE,
+                      cache.lazy = FALSE,
                       warning = FALSE,
                       keep_md = TRUE)
 ```
