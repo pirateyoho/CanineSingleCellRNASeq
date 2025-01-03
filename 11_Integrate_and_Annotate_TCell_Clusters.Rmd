@@ -83,7 +83,7 @@ ln_seurat$dataset = "LymphNodeDataset"
 thym_seurat$dataset = "ThymDataset"
 
 ln_seurat$OriginalClusters <- Idents(ln_seurat)
-ln_seurat$OriginalClusters <- Idents(thym_seurat)
+thym_seurat$OriginalClusters <- Idents(thym_seurat)
 ```
 
 # Subset T-cell clusters from each object
