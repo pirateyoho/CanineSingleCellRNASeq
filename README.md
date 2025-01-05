@@ -21,6 +21,7 @@ O:\RSTOR-Avery\210722_SCS_Harris\LN154803
 2. Reference genome FASTA and GTF files for CanFam3.1 were downloaded from Ensembl. The GTF file was filtered with cellranger mkgtf.
 3. A Cell Ranger index was built from the reference genome files.
 4. cellranger count was used to perform alignment, filtering, barcode counting, and UMI counting on the FASTQ files.
+5. QC, data normalization, clustering/dimensionality reduction, and annotation of data was performed in R with Seurat, doubletFinder, and SingleR.
 ### Sample information
 | **Sample #**| **Patient** | **Sex**| **Breed** | **Tissue** | **Age (mos.)**|
 |:-----------:|:-----------:|:------:|:---------:|:----------:|:-------------:|
