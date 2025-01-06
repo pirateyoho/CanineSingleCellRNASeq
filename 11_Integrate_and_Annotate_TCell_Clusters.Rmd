@@ -12,6 +12,7 @@ knitr::opts_chunk$set(dev = "png",
                       cache = TRUE,
                       cache.lazy = FALSE,
                       warning = FALSE,
+                      message = FALSE,
                       keep_md = TRUE)
 ```
 
@@ -50,14 +51,12 @@ library(ape)
 library(ggtree)
 ```
 
-# Data
-## Working directory
-```{r setwd}
-setwd("C:/Users/edlarsen/Documents/240828_scRNAseq/T_Cells")
-```
+# Data import and pre-processing
 
-## Import filtered, normalized, and clustered Seurat objects
+#### Filtered, normalized, clustered, and annotated Seurat objects:
 ```{r load-data, fig.width = 8, fig.height = 6}
+setwd("C:/Users/edlarsen/Documents/240828_scRNAseq/T_Cells")
+
 ln_seurat <- readRDS(file = "../Cluster_Annotation/LN_Annotated.RData")
 thym_seurat <- readRDS(file = "../Cluster_Annotation/THYM_Annotated.RData")
 
@@ -66,19 +65,20 @@ kable(table(Idents(ln_seurat)))
 DimPlot(ln_seurat,
         reduction = "umap",
                    label = TRUE,
-                   label.size = 6) + 
+                   label.size = 3,
+                   label.box = TRUE) + 
   plot_annotation(title = "Canine Lymph Node, Resolution: 0.1", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
 
 kable(table(Idents(thym_seurat)))
 DimPlot(thym_seurat,
         reduction = "umap",
                    label = TRUE,
-                   label.size = 6) + 
+                  label.box = TRUE,
+                   label.size = 3) + 
   plot_annotation(title = "Canine Thymus, Resolution: 0.2", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
 ```
 
-
-# Assign dataset ID and preserve original cluster labels in metadata
+##### Assign dataset ID and preserve original cluster labels in metadata:
 ```{r dataset-id}
 ln_seurat$dataset = "LymphNodeDataset"
 thym_seurat$dataset = "ThymDataset"
@@ -87,20 +87,19 @@ ln_seurat$OriginalClusters <- Idents(ln_seurat)
 thym_seurat$OriginalClusters <- Idents(thym_seurat)
 ```
 
-# Subset T-cell clusters from each object
+##### Subset T-cell clusters from each object:
 ```{r subsetT}
 ln_Tcells <- subset(x = ln_seurat, idents = c("LN0_Tcell", "LN2_Tcell", "LN3_Tcell", "LN4_CD8_NK"))
 thym_Tcells <- subset(x = thym_seurat, idents = c("T0_DP", "T1_DP", "T2_EarlySP", "T3_DN", "T4_Cycling", "T5_CD4SP", "T6_CD8SP", "T8_Cycling"))
 ```
 
-# Merge T-cell clusters into one object
+##### Merge T-cell clusters into one object:
 ```{r merge}
 all_Tcells <- merge(x = ln_Tcells, y = thym_Tcells, project = "MergedTCells")
-all_Tcells
 kable(table(Idents(all_Tcells)))
 ```
 
-# Normalize and scale data
+### Data normalization and scaling:
 ```{r normalizeAndScale, fig.width = 8, fig.height = 6, warning=FALSE}
 # normalize data
 all_Tcells <- NormalizeData(all_Tcells,
@@ -124,7 +123,7 @@ plot2
 all_Tcells <- ScaleData(all_Tcells)
 ```
 
-# Linear dimensional reduction (PCA)
+### Linear dimensional reduction (PCA)
 ```{r pca, message=FALSE, fig.width = 8, fig.height = 6}
 all_Tcells <- RunPCA(all_Tcells)
 DimPlot(all_Tcells, reduction = "pca") + ggtitle("PCA: Merged Canine T-cells from Lymph Node and Thymus")
@@ -134,14 +133,14 @@ DimPlot(all_Tcells, reduction = "pca") + ggtitle("PCA: Merged Canine T-cells fro
 DimHeatmap(all_Tcells, dims = 1:15, cells = 500, balanced = TRUE)
 ```
 
-## Elbow plot
+#### Elbow plot
 To decide how many principal components to include, we rank principal components based on the percentage of variance explained by an "elbow" in the plot.
 ```{r ElbowPlot}
 ElbowPlot(all_Tcells, ndims=40) + ggtitle("Elbow plot of principal components: \nMerged Canine T-cells from Lymph Node and Thymus")
 ```
 The location of the elbow in this plots suggests that the majority of the true signal is captured in the first 10 PCs. Based on this, the first 10 PCs will be used to generate cell clusters.
 
-# Perform integration
+### Integration
 Canonical correlation analysis (CCA) is a form of PCA, except it only identifies the greatest sources of variation in the data if it is shared or conserved across the conditions/groups, using the 3000 most variable genes from each sample.
 ```{r integrate}
 all_Tcells <- IntegrateLayers(object = all_Tcells,
@@ -152,13 +151,11 @@ all_Tcells <- IntegrateLayers(object = all_Tcells,
 all_Tcells[["RNA"]] <- JoinLayers(all_Tcells[["RNA"]])
 ```
 
-```{r}
+```{r exportRDS, eval=FALSE, include=FALSE, echo=FALSE}
 saveRDS(all_Tcells, "integrated_Tcells.RData")
 ```
 
-
-
-# Cluster cells
+# Clustering combined T-cell populations
 ```{r clustering, message=FALSE, results='hide', message=FALSE}
 all_Tcells <- FindNeighbors(all_Tcells, dims = 1:10) # replace with PCs calculated above
 all_Tcells <- FindClusters(all_Tcells, resolution = c(0.1,0.15,0.2,0.3,0.4,0.45,0.5,0.6,0.7,0.8,0.9,1.0,1.1)) # use a value above/below 1.0 if you want to obtain a larger/smaller number of clusters (communities); setting this parameter between 0.4-1.2 typically returns good results for single-cell datasets of ~3K cells; optimal resolution often increases for larger datasets.
@@ -172,14 +169,13 @@ cols_to_remove <- setdiff(rna_snn_cols, cols_to_keep)
 all_Tcells[[cols_to_remove]] <- NULL
 ```
 
-## clustree
+### clustree
 ```{r clustree, fig.width=12, fig.height=12}
 clustreeT <- clustree(all_Tcells, prefix = "RNA_snn_res.")
 clustreeT + ggtitle("Merged Canine T-cells from Lymph Node and Thymus") + theme(plot.title = element_text(hjust = 0.5))
 ```
 
-
-## Non-linear Dimensional Reduction (UMAP)
+### Non-linear Dimensional Reduction (UMAP)
 ```{r umap-Dims01to04, fig.width = 16, fig.height= 14}
 all_Tcells <- RunUMAP(all_Tcells, dims = 1:10) # replace with the PCs determined from elbow plot above
 umapT <- DimPlot(all_Tcells,
@@ -201,8 +197,8 @@ umapT <- DimPlot(all_Tcells,
 umapT + plot_annotation(title = "Merged Canine T-cells from Lymph Node and Thymus", theme = theme(plot.title = element_text(hjust = 0.5, size = 20)))
 ```
 
-## Compare to original cluster IDs
-```{r, fig.width = 10, fig.hight = 8}
+## Comparison to original cluster IDs
+```{r, fig.width = 8, fig.hight = 6}
 DimPlot(all_Tcells, 
         reduction = "umap",
         group.by = "OriginalClusters",
@@ -211,11 +207,10 @@ DimPlot(all_Tcells,
         label.box = TRUE)
 ```
 
-
-
 # Annotation
-## Differentially expressed features
-```{r FindAllMarkers, message=FALSE, fig.width = 8, fig.height = 6}
+
+### Top cluster markers
+```{r FindAllMarkers, message=FALSE, results='hide', fig.width = 8, fig.height = 6}
 all_Tcells <- FindClusters(all_Tcells, resolution = 0.3)
 all_Tcells <- RunUMAP(all_Tcells, dims = 1:10)
 Tcell.markers <- FindAllMarkers(all_Tcells, only.pos=TRUE)
@@ -224,7 +219,6 @@ Tcell.markers <- FindAllMarkers(all_Tcells, only.pos=TRUE)
 write.csv(Tcell.markers, file="mergedLnAndThymTCells_DEfeaturesByUMAPcluster_0.3.csv")
 ```
 
-## Top cluster markers
 ```{r topClusterMarkers, fig.width = 18, fig.height = 8}
 key.genes <- Tcell.markers[!grepl("ENSCAFG", row.names(Tcell.markers)),]
 key.genes.sortedByPval <- key.genes[order(key.genes$p_val),]
@@ -245,7 +239,7 @@ DotPlot(all_Tcells,
 ### Early thymic progenitors
 In humans and mice, the earliest lymphoid progenitor cells express **c-kit**, **Flt3**, **CD27**, and variably **IL7Ra**. T-cell lineage commitment is facilitated by **Notch** signaling in the thymus, which triggers expression of transcription factors T cell factor 1 (TCF-1, encoded by **TCF7**), **GATA3**, and **BCL11b** that promote expression of genes required for T-cell survival and differentiation.
 
-```{r FeaturePlot-Early, fig.width=20, fig.height=14}
+```{r FeaturePlot-Early, fig.width=14, fig.height=14}
 FeaturePlot(all_Tcells,
             reduction = "umap",
             features = c("CD34", "KIT", "FLT3", "IL7R", "NOTCH1", "TCF7", "GATA3", "BCL11B")) +
@@ -256,16 +250,30 @@ FeaturePlot(all_Tcells,
 ### Double negative thymocytes
 DN thymocytes should lack expression of CD4 and CD8. Four stages comprise the double negative (DN) thymocytes, distinguished by their variable expression of **CD44** and **CD25 (IL2RA)**. **Notch** signaling drives the progression from **CD25-CD44+ DN1** thymocytes to **CD25+CD44+ DN2** thymocytes. After being downregulated in these late DN stages, CD44 will again be expressed in SP thymocytes and is also a common marker of activation of mature T cells.
 
-Between the DN2 and DN3 stage, thymocytes rearrange their TCR to become committed to either the α/β or γ/δ T-cell lineage. Rearrangement of the TCR is facilitated by enzymes **RAG1** and **RAG2**. The TCRβ chain is rearranged first, and prior to TCRα chain rearrangement, it associates with the invariant **pre-Tα (PTCRA)** chain and CD3 molecules to form the pre-TCR. DN3 cells that pass β-selection will lose expression of CD25 and CD44 to become DN4 cells.
-
-In cynomolgus monkeys, **CD1** is expressed in DN and DP thymocytes, then downregulated as cells progressed to the SP stages.
-
-In mice, **LY6E** (also known as Thymic Shared Antigen-1 or Stem Cell Antigen-2) is a marker distinguishing early DN stages from more mature thymocyte subsets. In mature T cells, LY6E is a marker for T-cell activation.
-
-```{r FeaturePlot-DN, fig.width=20, fig.height=12}
+```{r FeaturePlot-DN1, fig.width=10, fig.height=14}
 FeaturePlot(all_Tcells,
             reduction = "umap",
-            features = c("CD4", "CD8A", "CD44", "IL2RA", "NOTCH1", "RAG1", "RAG2", "PTCRA", "DNTT", "CD1C", "LY6E")) +
+            features = c("CD4", "CD8A", "CD44", "IL2RA", "NOTCH1")) +
+  plot_annotation(title = "Merged Canine T-cells from Lymph Node and Thymus:\nExpression of Double Negative (DN) Thymocyte Markers", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+Between the DN2 and DN3 stage, thymocytes rearrange their TCR to become committed to either the α/β or γ/δ T-cell lineage. Rearrangement of the TCR is facilitated by enzymes **RAG1** and **RAG2**. The TCRβ chain is rearranged first, and prior to TCRα chain rearrangement, it associates with the invariant **pre-Tα (PTCRA)** chain and CD3 molecules to form the pre-TCR. DN3 cells that pass β-selection will lose expression of CD25 and CD44 to become DN4 cells.
+
+```{r FeaturePlot-DN2, fig.width=10, fig.height=14}
+FeaturePlot(all_Tcells,
+            reduction = "umap",
+            features = c("CD4", "CD8A", "RAG1", "RAG2", "PTCRA")) +
+  plot_annotation(title = "Merged Canine T-cells from Lymph Node and Thymus:\nExpression of Double Negative (DN) Thymocyte Markers", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
+```
+
+**DNTT** encodes a terminal deoxynucleotidyl transferase (TdT), whose expression is normally restricted to primitive lymphocytes in the thymus and bone marrow. In the thymus, it plays a role in the TCR rearrangement, typically expressed in DN and double positive (DP) thymocytes and downregulated as T cells mature to single positive (SP) cells. In cynomolgus monkeys, **CD1** is expressed in DN and DP thymocytes, then downregulated as cells progress to the SP stages.  In mice, **LY6E** (also known as Thymic Shared Antigen-1 or Stem Cell Antigen-2) is a marker distinguishing early DN stages from more mature thymocyte subsets. In mature T cells, LY6E is a marker for T-cell activation.
+
+```{r FeaturePlot-DN, fig.width=10, fig.height=14}
+FeaturePlot(all_Tcells,
+            reduction = "umap",
+            features = c("CD4", "CD8A", "DNTT", "CD1C", "LY6E")) +
   plot_annotation(title = "Merged Canine T-cells from Lymph Node and Thymus:\nExpression of Double Negative (DN) Thymocyte Markers", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
@@ -300,9 +308,9 @@ FeaturePlot(all_Tcells,
 
 ### Double positive thymocytes
 
-DP thymocytes should express CD4 and CD8. **CCR9** is expressed by most DP thymocytes, but not DN thymocytes, and it is subsequently downregulated with the transition from the DP stage to SP stages of thymocyte development. In cynomolgus monkeys, **CD1** is expressed in DN and DP thymocytes, then downregulated as cells progressed to the SP stages.
+DP thymocytes should express CD4 and CD8. In mice, **CCR9** is not expressed at earlier stages of thymocyte development but begins to appear around the DN3 stage, is expressed by most DP thymocytes, and is subsequently downregulated from the DP to SP stages, although a small subset of CD8+ T cells in the periphery retain CCR9 expression. In cynomolgus monkeys, **CD1** is expressed in DN and DP thymocytes, then downregulated as cells progress to the SP stages.
 
-```{r FeaturePlot-DP, fig.width=14, fig.height=10}
+```{r FeaturePlot-DP, fig.width=12, fig.height=12}
 FeaturePlot(all_Tcells,
             reduction = "umap",
             features = c("CD4", "CD8A", "CCR9", "CD1C")) +
@@ -314,20 +322,20 @@ FeaturePlot(all_Tcells,
 
 SP thymocytes should express either CD4 (mediated by transcription factors **GATA3** and THPOK, encoded by **ZBTB7B**) or CD8 (mediated by transcription factor **RUNX3**). The **IL-7/STAT5** axis acts upstream of Runx3 to enhance its expression and promote CD8+ differentiation. During terminal maturation, CD4+ and CD8+ T cells start expressing sphingosine 1 phosphate receptor (**S1PR1**) which promotes egress from the thymus and entry into circulation.
 
-```{r FeaturePlot-SP, fig.width=20, fig.height=16}
+```{r FeaturePlot-SP, fig.width=14, fig.height=14}
 FeaturePlot(all_Tcells,
             reduction = "umap",
             ncol = 3,
             features = c("CD4", "CD8A", "GATA3", "ZBTB7B", "RUNX3", "STAT5A", "S1PR1")) +
-  plot_annotation(title = "Merged Canine T-cells from Lymph Node and Thymus:\nExpression of Double Positive Thymocyte Markers", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
+  plot_annotation(title = "Merged Canine T-cells from Lymph Node and Thymus:\nExpression of Single Positive Thymocyte Markers", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
 ### Naive T cells
 
-The homing molecule L-selectin (encoded by **SELL**) is primarily expresed by naive T cells and is downregulated following engagement of the TCR by antigen. Another homing molecule expressed by naive T cells is **CCR7**. CD132 (**IL2RG**) is expressed by both mature and activated mature T cells, while CD122 (**IL2RB**) tends to be expressed more highly in activated T cells than naive T cells. 
+The homing molecule L-selectin (encoded by **SELL**) is primarily expressed by naive T cells and is downregulated following engagement of the TCR by antigen. Another homing molecule expressed by naive T cells is **CCR7**. CD132 (**IL2RG**) is expressed by both mature and activated mature T cells, while CD122 (**IL2RB**) tends to be expressed more highly in activated T cells than naive T cells. 
 
-```{r FeaturePlot-Naivemarkers, fig.width = 14, fig.height = 10}
+```{r FeaturePlot-Naivemarkers, fig.width = 12, fig.height = 12}
 FeaturePlot(all_Tcells, 
             reduction = "umap",
             ncol = 2,
@@ -338,15 +346,16 @@ FeaturePlot(all_Tcells,
 
 These markers for naive CD4+ and CD8+ T cells were derived from a single-cell atlas of circulating canine leukocytes (https://github.com/dyammons/Canine_Leukocyte_scRNA).
 
-```{r FeaturePlot-NaiveCD8markers, fig.height = 16, fig.width = 14}
+```{r FeaturePlot-NaiveCD8markers, fig.height = 10, fig.width = 14}
 FeaturePlot(all_Tcells,
             reduction = "umap",
+            ncol = 3,
             features = c("CD8A", "ITGA1", "PTGDR", "IL2RB", "ADGRG1", "NBEA")) + 
   plot_annotation(title = "Merged Canine T-cells from Lymph Node and Thymus:\nExpression of Markers for Naive CD8 T-cells from Canine Circulating Leukocyte Atlas", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
-```{r FeaturePlot-NaiveCD4markers, fig.height = 14, fig.width = 16}
+```{r FeaturePlot-NaiveCD4markers, fig.height = 14, fig.width = 14}
 FeaturePlot(all_Tcells,
             reduction = "umap",
             features = c("CD4", "LEF1", "CSTA", "RGS10", "ZNF536", "CCR7", "COL6A5", "LTB", "TNFSF8")) + 
@@ -357,17 +366,18 @@ FeaturePlot(all_Tcells,
 ### Mature, activated T cells
 In mature T cells, **LY6E** is a marker for T-cell activation. T cells rapidly upregulate adhesion molecule **CD44** after antigen encounter/activation. The culmination of T-cell activation is their clonal expansion as a result of their secretion of **IL-2**. T cells increasingly upregulate inhibitory molecules **CTLA-4** and **LGALS3** after stimulation. **CD7** is a marker for mature T cells but is also expressed by NK cells. 
 
-```{r FeaturePlot-Maturemarkers, fig.width = 20, fig.height = 12}
+```{r FeaturePlot-Maturemarkers, fig.width = 14, fig.height = 14}
 FeaturePlot(all_Tcells, 
             reduction = "umap",
             ncol = 3,
-            features = c("CD3E", "CD7", "IL2", "IL2RA", "CTLA4", "LGALS3")) +
+            features = c("CD3E", "LY6E", "CD7", "CD44", "IL2", "IL2RA", "CTLA4", "LGALS3")) +
   plot_annotation(title = "Merged Canine T-cells from Lymph Node and Thymus:\nExpression of Markers of T-cell Maturity", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
+
 ### Mature T-cell subtypes
 
-```{r FeaturePlot-Th1markers, fig.width = 16, fig.height = 12}
+```{r FeaturePlot-Th1markers, fig.width = 14, fig.height = 14}
 FeaturePlot(all_Tcells, 
             reduction = "umap",
             ncol = 3,
@@ -376,7 +386,7 @@ FeaturePlot(all_Tcells,
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
-```{r FeaturePlot-Th2markers, fig.width = 16, fig.height = 8}
+```{r FeaturePlot-Th2markers, fig.width = 14, fig.height = 10}
 FeaturePlot(all_Tcells, 
             reduction = "umap",
             ncol = 3,
@@ -385,7 +395,7 @@ FeaturePlot(all_Tcells,
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
-```{r FeaturePlot-Tregmarkers, fig.width = 10, fig.height = 8}
+```{r FeaturePlot-Tregmarkers, fig.width = 12, fig.height = 12}
 FeaturePlot(all_Tcells, 
             reduction = "umap",
             ncol = 2,
@@ -394,7 +404,7 @@ FeaturePlot(all_Tcells,
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
-```{r FeaturePlot-Th17markers, fig.width = 16, fig.height = 12}
+```{r FeaturePlot-Th17markers, fig.width = 14, fig.height = 14}
 FeaturePlot(all_Tcells, 
             reduction = "umap",
             ncol = 3,
@@ -404,7 +414,7 @@ FeaturePlot(all_Tcells,
 ```
 
 
-```{r FeaturePlot-Th9markers, fig.width = 10, fig.height = 8}
+```{r FeaturePlot-Th9markers, fig.width = 12, fig.height = 12}
 FeaturePlot(all_Tcells, 
             reduction = "umap",
             ncol = 2,
@@ -413,7 +423,7 @@ FeaturePlot(all_Tcells,
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
-```{r FeaturePlot-Th22markers, fig.width = 10, fig.height = 8}
+```{r FeaturePlot-Th22markers, fig.width = 12, fig.height = 12}
 FeaturePlot(all_Tcells, 
             reduction = "umap",
             ncol = 2,
@@ -422,16 +432,16 @@ FeaturePlot(all_Tcells,
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
-```{r FeaturePlot-CD8markers, fig.width = 14, fig.height = 8}
+```{r FeaturePlot-CD8markers, fig.width = 14, fig.height = 14}
 FeaturePlot(all_Tcells, 
             reduction = "umap",
             ncol = 3,
-            features = c("CD8A", "IFNG", "TNFA", "FAS", "FASLG", "GZMB", "PRF1")) +
+            features = c("CD8A", "IFNG", "TNF", "FAS", "FASLG", "GZMB", "PRF1")) +
   plot_annotation(title = "Merged Canine T-cells from Lymph Node and Thymus:\nExpression of Canonical CD8+ T-cell Markers", theme = theme(plot.title = element_text(hjust = 0.5, size = 20))) &
   scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
 ```
 
-```{r FeaturePlot-NKmarkers, fig.width = 16, fig.height = 12}
+```{r FeaturePlot-NKmarkers, fig.width = 14, fig.height = 14}
 FeaturePlot(all_Tcells, 
             reduction = "umap",
             ncol = 3,
@@ -443,44 +453,6 @@ FeaturePlot(all_Tcells,
 # Module scoring
 ## Park et al. human thymus feature expression
 Calculates the average expression levels of each cluster on a single-cell level, subtracted by the aggregated expression of control feature sets. All analyzed features are binned based on averaged expression, and the control features are randomly selected from each bin.
-
-### Top 20 marker genes for each cell type in human thymus atlas
-Source: Park et al., Supplementary Table 4 (https://www.science.org/doi/10.1126/science.aay3224#supplementary-materials)
-```{r moduleScoring-top20parkEtAlHumanThymusAtlas, warning = FALSE, fig.width = 16, fig.height = 8, message = FALSE}
-# make gene lists
-human_thymus_atlas_top20 <- read.csv("../Cluster_Annotation/Parketal_SupTable4_Top20MarkersForCellTypes.csv")
-colnames(human_thymus_atlas_top20)
-
-plot_list <- list() # initiate empty list for individual plots
-
-for (column in colnames(human_thymus_atlas_top20)){
-  genes <- list(human_thymus_atlas_top20[[column]])
-  name <- paste(column, "Score", sep="_")
-  all_Tcells <- AddModuleScore(all_Tcells, features = genes, name = name)
-  newname <- paste(name, "1", sep="")
-  plotname <- paste(name, "modscoreplot", sep="_")
-  modscoreplot <- FeaturePlot(all_Tcells, features = newname) + scale_color_gradientn(colours = brewer.pal(name = "RdPu", n=11))
-  plot_list[[name]] <- modscoreplot # add plot to list
-}
-
-# split plot_list into groups of 4 and handle any remaining plots
-plot_groups <- split(plot_list, ceiling(seq_along(plot_list) / 6))
-
-# combined plot with dynamic number of columns/rows
-combine_plots <- function(group, ncol = 3){
-  n_plots <- length(group)
-  nrow <- ceiling(n_plots / ncol)
-  wrap_plots(group, ncol = ncol, nrow = nrow)
-}
-combined_plots <- lapply(plot_groups, function(group) {
-  combine_plots(group, ncol = 3)
-})
-
-# display each combined plot
-for (i in seq_along(combined_plots)) {
-  print(combined_plots[[i]])
-}
-```
 
 ### Top 51 marker genes for each cell type in human thymus atlas
 Source: Park et al. data accessed through UCSC Cell Browser
@@ -598,19 +570,32 @@ for (i in seq_along(combined_plots)) {
 
 # Assigning cell type identity to clusters
 To be done once confident cluster assignment has been achieved.
-```{r clustID, fig.width = 10, fig.height = 8}
-new.cluster.ids <- c("Naive_T", "DP_Thymocytes_2", "Activated_T", "DP_Thymocytes_3", "SP_Thymocytes_1", "SP_Thymocytes_2", "DP_Thymocytes_1", "DN_Thymocytes", "CD8_NK_1", "NK_cells", "Unknown", "CD8_NK_2")
+```{r clustID, fig.width = 12, fig.height = 8}
+### 0.3 resolution
+new.cluster.ids <- c("Naive_T_2", "DP_Thymocytes_2", "Activated_T", "DP_Thymocytes_3", "SP_Thymocytes", "Naive_T_1", "DP_Thymocytes_1", "DN_Thymocytes", "CD8_NK_1", "Late_CD8SP_Thymocytes_1", "Late_CD8SP_Thymocytes_2", "CD8_NK_2")
 names(new.cluster.ids) <- levels(all_Tcells)
 all_Tcells <- RenameIdents(all_Tcells, new.cluster.ids)
 
 DimPlot(all_Tcells, reduction = "umap", label = TRUE, label.size = 3, label.box = TRUE, pt.size = 0.5) + ggtitle("Canine Merged Lymph Node and Thymus T Cells, Resolution: 0.3")
 
 # save as new column in metadata in addition to reassigning idents
-all_Tcells$IntegratedClusters <- Idents(all_Tcells)
-all_Tcells$IntegratedClusters <- Idents(all_Tcells)
+all_Tcells$IntegratedClusters03Res <- Idents(all_Tcells)
 
-# export
-#saveRDS(all_Tcells, file="IntegThymAndLN_Annotated.RData")
+### 0.5 resolution
+all_Tcells <- FindClusters(all_Tcells, resolution = 0.5)
+all_Tcells <- RunUMAP(all_Tcells, dims = 1:10)
+Tcell.markers.05 <- FindAllMarkers(all_Tcells, only.pos=TRUE)
+new.cluster.ids.05 <- c("DP_Thymocytes_2", "Naive_T_2", "Activated_T", "DP_Thymocytes_3", "Late_CD4SP_Thymocytes", "Naive_T_1", "Early_SP_Thymocytes_2", "Proliferating_DP_Thymocytes_1", "CD8_NK_1", "Early_SP_Thymocytes_1", "ETP_or_NonProliferatingDP", "ETP_and_DN_Thymocytes", "Proliferating_DP_Thymocytes_2", "Late_CD8SP_Thymocytes_1", "Late_CD8SP_Thymocytes_2", "CD8_NK_2")
+names(new.cluster.ids.05) <- levels(all_Tcells)
+all_Tcells <- RenameIdents(all_Tcells, new.cluster.ids.05)
+
+DimPlot(all_Tcells, reduction = "umap", label = TRUE, label.size = 3, label.box = TRUE, pt.size = 0.5) + ggtitle("Canine Merged Lymph Node and Thymus T Cells, Resolution: 0.5")
+
+all_Tcells$IntegratedClustersRes05 <- Idents(all_Tcells)
+
+# Export
+write.csv(Tcell.markers.05, file="mergedLnAndThymTCells_DEfeaturesByUMAPcluster_0.5.csv")
+saveRDS(all_Tcells, file = "IntegThymAndLN_Annotated.Rdata")
 ```
 
 # Citations
@@ -618,4 +603,3 @@ all_Tcells$IntegratedClusters <- Idents(all_Tcells)
 sessionInfo()
 citation()
 ```
-
