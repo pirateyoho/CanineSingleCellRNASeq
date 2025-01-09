@@ -1,0 +1,293 @@
+---
+title: "Gene Expression Profiling of Single-Cell Clusters"
+author: "Eileen Owens"
+date: "2025-01-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,
+                      cache = TRUE,
+                      cache.lazy = FALSE,
+                      warning = FALSE,
+                      message = FALSE,
+                      keep_md = TRUE)
+```
+
+# Introduction
+The purpose of this script is to perform various differential gene expression and gene enrichment analyses between clusters of a single-cell RNA-seq experiment.
+
+# Software
+```{r software-load, results="hide", message=FALSE}
+library(Seurat)
+library(tidyverse)
+library(patchwork)
+library(pheatmap)
+library(RColorBrewer)
+library(SingleR)
+library(celldex) # To install: BiocManager::install("celldex")
+library(data.table)
+library(knitr)
+library(clusterProfiler)
+library(msigdbr)
+```
+
+# Data import
+```{r data-import, fig.width = 12, fig.height = 8}
+setwd("C:/Users/edlarsen/Documents/240828_scRNAseq/T_Cells")
+
+seu_obj <- readRDS(file = "IntegThymAndLN_Annotated.Rdata")
+
+kable(table(Idents(seu_obj)))
+DimPlot(seu_obj, 
+        reduction = "umap", 
+        label = TRUE, 
+        label.size = 3, 
+        label.box = TRUE, 
+        pt.size = 0.5) + 
+  ggtitle("Canine Merged Lymph Node and Thymus T Cells, Resolution: 0.5")
+```
+
+# Top cluster markers
+```{r topClusterMarkers, fig.width = 18, fig.height = 8}
+clust.markers <- FindAllMarkers(seu_obj, only.pos=TRUE)
+key.genes <- clust.markers[!grepl("ENSCAFG", row.names(clust.markers)),]
+key.genes.sortedByPval <- key.genes[order(key.genes$p_val),]
+features <- key.genes.sortedByPval %>% group_by(cluster) %>% do(head(., n=5))
+features <- as.data.frame(features[!duplicated(features$gene),]) # prioritize unique clusters
+
+# reorder clusters in lineage order
+seu_obj@active.ident <- factor(seu_obj@active.ident,
+                               levels = c("ETP_and_DN_Thymocytes",
+                                          "ETP_or_NonProliferatingDP",
+                                          "DP_Thymocytes_2",
+                                          "DP_Thymocytes_3",
+                                          "Proliferating_DP_Thymocytes_1",
+                                          "Proliferating_DP_Thymocytes_2",
+                                          "Early_SP_Thymocytes_1",
+                                          "Early_SP_Thymocytes_2",
+                                          "Late_CD8SP_Thymocytes_1",
+                                          "Late_CD8SP_Thymocytes_2",
+                                          "Late_CD4SP_Thymocytes",
+                                          "Naive_T_1",
+                                          "Naive_T_2",
+                                          "Activated_T",
+                                          "CD8_NK_1",
+                                          "CD8_NK_2"
+                                          ))
+
+DotPlot(seu_obj,
+        assay = "RNA",
+        features = rev(features$gene),
+        scale = TRUE) + 
+  geom_point(aes(size=pct.exp), shape = 21, colour="black", stroke=0.5) +
+  labs(y = "Cluster") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+# Expression of canonical markers
+```{r canonicalMarkers, fig.width = 12, fig.height = 8}
+geneList <- c("CD34", "KIT", "DNTT", "FLT3", "NOTCH1", "RAG1", "RAG2", "PTCRA", "CD1C", "CCR9", "GATA3", "RUNX3", "S1PR1", "CD44", "SELL", "CCR7", "IL2RA", "IL2RB", "IL2", "IL2RG", "TGFBR2", "CD7", "CTLA4", "LGALS3", "LTB", "GZMB", "KLRB1", "FCER1G", "HLA-DQB2", "CD4", "CD8A")
+
+DotPlot(seu_obj,
+        assay = "RNA",
+        features = geneList) + RotatedAxis()
+```
+
+# GSEA
+# Gene Set Enrichment Analysis
+Comparison with gene signatures from a human single-cell thymus atlas (https://cells.ucsc.edu/?ds=fetal-thymus+all; https://www.science.org/doi/10.1126/science.aay3224).
+
+Note about some of the cell types in this atlas:
+* T agonist = a population that shared expression modules with differentiating Treg cells, but not with terminally differentiated Treg cells. This population was defined by expression of a noncoding RNA, MIR155HG.
+* MEMP = megakaryocyte/erythrocyte/mast cell progenitor
+* NMP = neutrophil-myeloid progenitor
+* Some cell types were annotated on multiple UMAPs (i.e., a UMAP of all thymus cells together vs a UMAP of just T-cell populations). These are distinguished by a Roman numeral (e.g., Early Thymic Progenitor and Early Thymic Progenitor II). These numerals do not imply any biologic difference, such as later stages of differentiation.
+
+```{r GSEA, warning=FALSE, message=FALSE}
+# significant markers
+sig.markers <- subset(clust.markers, p_val_adj < 0.05)
+
+# loop through each cluster and create a ranked gene list for each
+for (clust in unique(sig.markers$cluster)){
+  name <- paste(clust, "rankedGenes", sep="")
+  genesByLog2FC <- sig.markers %>%
+    dplyr::filter(cluster == clust) %>%
+    dplyr::select(gene, avg_log2FC) %>%
+    arrange(desc(avg_log2FC))
+  rankedGeneList <- genesByLog2FC$avg_log2FC
+  names(rankedGeneList) <- genesByLog2FC$gene
+  assign(name, rankedGeneList)
+}
+
+# import gmt file(s)
+## one gmt file
+#gmt <- read.gmt("HumanThymusClusters.gmt")
+
+## multiple gmt files
+gmtFiles <- list.files(pattern = "\\.gmt", full.names = TRUE) # Get list of all .gmt files in this directory
+gmtTables <- lapply(gmtFiles, read.gmt) # Apply the read.gmt function to the list of .gmt files and save as a variable
+gmt <- do.call(rbind, gmtTables) # Rbind files
+
+# loop through each cluster's ranked gene list and run GSEA for gene lists in the gmt file(s) on each
+for (geneList in ls(pattern = "rankedGenes")){
+  name <- paste(geneList, "GSEA", sep="_")
+  name <- gsub("rankedGenes", "", name)
+  input <- get(geneList)
+  gse <- GSEA(input,
+              exponent = 1,
+              pvalueCutoff = 1,
+              pAdjustMethod = "BH",
+              TERM2GENE = gmt,
+              verbose = TRUE,
+              by = "fgsea")
+  assign(name, gse)
+}
+
+# Remove any objects with no significantly enriched gene sets from the global environment
+for (GSEAresult in ls(pattern = "_GSEA")){
+  obj <- get(GSEAresult)
+  res <- obj@result
+  if (nrow(res) == 0) {
+    rm(list = ls(pattern = GSEAresult))
+  }
+}
+```
+
+```{r GSEAplots, message=FALSE, fig.width = 16, fig.height = 10, warning=FALSE}
+# Loop through each GSEA object, export results as csv, and plot results as an enrichment dot plot
+plot_list <- list() # initiate empty list for individual plots
+
+for (GSEAresult in ls(pattern = "_GSEA")){
+  name <- paste(GSEAresult, sep="_")
+  name <- gsub('rankedGenes', '', name)
+  name <- gsub('GSEA', '', name)
+  plotname <- gsub('_', ' ', name)
+  obj <- get(GSEAresult)
+  write.csv(obj, file=paste(name, "csv", sep="."))
+  
+  eplot <- obj %>%
+    dotplot(showCategory = 10, x = "NES") +
+    scale_color_viridis_c(name = "Adjusted\nP-value",
+                          option = "H") +
+    scale_y_discrete(labels = ~ str_wrap(gsub('_', ' ', .x), 40)) +
+    geom_vline(xintercept = 0, linetype = 2) +
+    labs(title = plotname, y = "Gene Set") +
+    theme(plot.title = element_text(hjust = 0.5, size = 12))
+  
+  plot_list[[name]] <- eplot # add plot to list
+}
+
+# break plot list into chunks of 4
+chunk_size <- 4
+chunks <- split(plot_list, ceiling(seq_along(plot_list) / chunk_size))
+
+# combine plots into single layout
+for (i in seq_along(chunks)){
+  combined_plot <- wrap_plots(chunks[[i]], ncol = 2)
+  print(combined_plot)
+}
+```
+
+# Differential expression analysis
+```{r results = "asis"}
+ETP_and_DN_Thymocytes_vs_ETP_or_NonProliferatingDP <- FindMarkers(seu_obj, ident.1 = "ETP_and_DN_Thymocytes", ident.2 = "ETP_or_NonProliferatingDP")
+write.csv(ETP_and_DN_Thymocytes_vs_ETP_or_NonProliferatingDP, file="FindMarkers_ETPandDN_vs_ETPorNonProliferating.csv")
+
+DP_Thymocytes_2_vs_DP_Thymocytes_3 <- FindMarkers(seu_obj, ident.1 = "DP_Thymocytes_2", ident.2 = "DP_Thymocytes_3")
+write.csv(DP_Thymocytes_2_vs_DP_Thymocytes_3, file="FindMarkers_DPThymocytes2_vs_DPThymocytes3.csv")
+
+CD8_NK_1_vs_CD8_NK_2 <- FindMarkers(seu_obj, ident.1 = "CD8_NK_1", ident.2 = "CD8_NK_2")
+write.csv(CD8_NK_1_vs_CD8_NK_2, file="FindMarkers_CD8NK1_vs_CD8NK2.csv")
+
+Late_CD8SP_Thymocytes_1_vs_Late_CD8SP_Thymocytes_2 <- FindMarkers(seu_obj, ident.1 = "Late_CD8SP_Thymocytes_1", ident.2 = "Late_CD8SP_Thymocytes_2")
+write.csv(Late_CD8SP_Thymocytes_1_vs_Late_CD8SP_Thymocytes_2, file="FindMarkers_LateCD8SP1_vs_LateCD8SP2.csv")
+
+Early_SP_Thymocytes_1_vs_Early_SP_Thymocytes_2 <- FindMarkers(seu_obj, ident.1 = "Early_SP_Thymocytes_1", ident.2 = "Early_SP_Thymocytes_2")
+write.csv(Early_SP_Thymocytes_1_vs_Early_SP_Thymocytes_2, file="FindMarkers_EarlySP1_vs_EarlySP2.csv")
+
+Proliferating_DP_Thymocytes_1_vs_Proliferating_DP_Thymocytes_2 <- FindMarkers(seu_obj, ident.1 = "Proliferating_DP_Thymocytes_1", ident.2 = "Proliferating_DP_Thymocytes_2")
+write.csv(Proliferating_DP_Thymocytes_1_vs_Proliferating_DP_Thymocytes_2, file="FindMarkers_ProlifDP1_vs_ProlifDP2.csv")
+  
+for (result in ls(pattern = "_vs_")){
+  name <- result
+  result <- get(result)
+  topDE <- result %>%
+    dplyr::filter(p_val_adj < 0.05) %>%
+    arrange(desc(avg_log2FC))
+  print(kable(head(topDE, n = 20), caption = name))
+}
+```
+
+```{r msigdb_gsea, message=FALSE, fig.width = 20, fig.height = 18, warning=FALSE}
+# To use gene ontology sets from MSigDB, un-comment and replace 'gmt' in TERM2GENE field of GSEA analysis with 'm_t2g_C5'
+#m_t2g_C5 <- msigdbr(species = "Homo sapiens", category = "C5") %>%
+  #dplyr::select(gs_name, gene_symbol)
+
+plot_list <- list() # initiate empty list for individual plots
+
+# Create a ranked gene lists
+for (de in ls(pattern = "_vs_")){
+  outfile <- paste(de, "TcellSignatureGSEA", ".csv", sep="")
+  name <- de
+  de <- get(de)
+  rankedGenes <- de$avg_log2FC
+  names(rankedGenes) <- rownames(de)
+  rankedGenes <- na.omit(rankedGenes)
+  rankedGenes <- sort(rankedGenes, decreasing = TRUE)
+  rankedGenes_names <- names(rankedGenes) # Makes a vector of just the ranked gene names
+  
+  gse <- GSEA(rankedGenes,
+              exponent = 1,
+              pvalueCutoff = 0.05,
+              pAdjustMethod = "BH",
+              TERM2GENE = gmt,
+              verbose = TRUE,
+              by = "fgsea")
+
+  res <- gse@result
+  if (nrow(res) == 0) next
+  else
+    gse_df <- as.data.frame(gse)
+    write.csv(gse_df, file=outfile)
+    eplot <- gse %>%
+      dotplot(showCategory = 15, x = "NES") +
+      scale_color_viridis_c(name = "Adjusted\nP-value",
+                          option = "H") +
+      scale_y_discrete(labels = ~ str_wrap(gsub('_', ' ', .x), 40)) +
+      geom_vline(xintercept = 0, linetype = 2) +
+      labs(title = name, y = "Gene Set") +
+      theme(plot.title = element_text(hjust = 0.5))
+
+    plot_list[[name]] <- eplot # add plot to list
+}
+
+#combine plots into single layout
+combined_plot <- wrap_plots(plot_list, ncol = 2)
+print(combined_plot)
+```
+
+# Update annotations
+```{r annotate, eval=FALSE}
+new.cluster.ids <- c("DP_Thymocytes_2", "Naive_T_2", "Activated_T", "DP_Thymocytes_3", "Late_CD4SP_Thymocytes", "Naive_T_1", "Early_SP_Thymocytes_2", "Proliferating_DP_Thymocytes_1", "CD8_NK_1", "Early_SP_Thymocytes_1", "ETP_or_NonProliferatingDP", "ETP_and_DN_Thymocytes", "Proliferating_DP_Thymocytes_2", "Late_CD8SP_Thymocytes_1", "Late_CD8SP_Thymocytes_2", "CD8_NK_2")
+names(new.cluster.ids) <- levels(seu_obj)
+seu_obj <- RenameIdents(seu_obj, new.cluster.ids)
+
+DimPlot(seu_obj, reduction = "umap", label = TRUE, label.size = 3, label.box = TRUE, pt.size = 0.5) + ggtitle("Canine Merged Lymph Node and Thymus T Cells, Resolution: 0.5")
+
+seu_obj$FinalClusterAnn05 <- Idents(seu_obj)
+
+# Export
+clust.markers <- FindAllMarkers(seu_obj, only.pos=TRUE)
+write.csv(clust.markers, file="mergedLnAndThymTCells_DEfeaturesByUMAPcluster_0.5.csv")
+saveRDS(seu_obj, file = "IntegThymAndLN_Annotated.Rdata")
+```
+
+
+
+
+
+
+
