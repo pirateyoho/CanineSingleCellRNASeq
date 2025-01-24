@@ -1,0 +1,415 @@
+---
+title: "Pseudotime Trajectory Analysis"
+author: "Eileen Owens"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      echo = TRUE,
+                      cache = TRUE,
+                      cache.lazy = FALSE,
+                      warning = FALSE,
+                      message = FALSE,
+                      keep_md = TRUE)
+```
+
+# Introduction
+The purpose of this script is to perform a pseudotime trajectory analysis on single-cell RNA-seq data from normal canine T-cell populations derived from the thymus and lymph node of healthy dogs.
+
+# Acknowledgements
+This script was adapted from the Monocle 3 documentation (https://cole-trapnell-lab.github.io/monocle3/docs/trajectories/) and "Single Cell RNA seq analysis - SEurat and Monocle3 pipeline" by Mahima Bose (https://rpubs.com/mahima_bose/Seurat_and_Monocle3_p).
+
+# Software
+```{r install, eval= FALSE, include = FALSE, echo=FALSE}
+# First time: Install monocle3
+## install Bioconductor dependencies
+BiocManager::install(c('BiocGenerics', 'DelayedArray', 'DelayedMatrixStats',
+                       'limma', 'lme4', 'S4Vectors', 'SingleCellExperiment',
+                       'SummarizedExperiment', 'batchelor', 'HDF5Array',
+                       'terra', 'ggrastr'))
+# install monocle3
+devtools::install_github('cole-trapnell-lab/monocle3')
+
+# ensure 'promises' is version 1.3.2 or higher
+packageVersion("promises")
+#install_version("promises", >=1.3.2)
+
+# install SeuratWrappers
+remotes::install_github('satijalab/seurat-wrappers')
+```
+
+```{r software-load, results="hide", message=FALSE}
+library(Seurat)
+library(knitr)
+library(tidyverse)
+library(patchwork)
+library(monocle3)
+library(SeuratWrappers)
+library(pheatmap)
+library(stringr)
+library(RColorBrewer)
+```
+
+# Data
+Input: A Seurat object of T-cell subsets from normal canine lymph node and thymus.
+```{r data-import, results='hide', message=FALSE}
+setwd("C:/Users/edlarsen/Documents/240828_scRNAseq/Pseudotime")
+seu <- readRDS(file = "C:/Users/edlarsen/Documents/240828_scRNAseq/T_Cells/IntegThymAndLN_Annotated.RData")
+```
+
+# Trajectory analysis with Monocle3
+As cells move between biologic states, they undergo transcriptional reconfiguration, with some genes silenced and others newly activated. Trying to purify cells in these transient states to characterize them can be challenging. Monocle 3 utilizes an algorithm that learns the sequence of gene expression changes each cell must go through as it passes through dynamic biologic processes. Once it learns the overall trajectory of gene expression changes, it places each cell at its proper position in the trajectory. Monocle 3's differential expression analysis toolkit can then find genes regulated over the course of the trajectory.
+
+If there are multiple outcomes for a process, a branched trajectory will be made, which correspond to cellular "decisions." The differential expression analysis toolkit is therefore also useful for identifying genes affected by and involved in making these decisions. 
+
+### Convert Seurat object to celldata set object:
+```{r seurat-to-cds}
+cds <- as.cell_data_set(seu, assay = "RNA")
+cds <- estimate_size_factors(cds)
+fData(cds)$gene_short_name <- rownames(fData(cds))
+
+## To view cell metadata:
+# head(colData(cds))
+## To view count data:
+#head(counts(cds))
+```
+
+### Cluster data with Monocle 3
+```{r cluster_cds1}
+cds <- cluster_cells(cds, reduction_method = "UMAP")
+
+plot_cells(cds, group_label_size = 5, show_trajectory_graph = FALSE)
+```
+
+### Add cluster names and plot clusters before trajectory
+```{r cluster_cds2, fig.width=9, fig.height=6}
+# create new column in colData(cds) an initialize it with values of partition(cds)
+colData(cds)$assigned_cell_type <- as.character(clusters(cds))
+
+# remap each cluster to cell type
+colData(cds)$assigned_cell_type <- dplyr::recode(colData(cds)$assigned_cell_type,
+                                                 "1" = "DP_Thym_2",
+                                                 "2" = "DP_Thym_1",
+                                                 "3" = "Activated_T_1",
+                                                 "4" = "Naive_T_2",
+                                                 "5" = "SP_Thym_and_Naive_T_1",
+                                                 "6" = "SP_Thym_and_Naive_T_2",
+                                                 "7" = "Activated_T_2",
+                                                 "8" = "SP_Thym",
+                                                 "9" = "Proliferating_DP_Thym",
+                                                 "10" = "CD8_NK",
+                                                 "11" = "ETP_and_DN_Thym",
+                                                 "12" = "Late_SP_Thym")
+
+plot_cells(cds, 
+           color_cells_by = "assigned_cell_type", 
+           group_label_size = 4, 
+           show_trajectory_graph = FALSE) + theme(legend.position = "right")
+```
+
+```{r eval=FALSE, include=FALSE, echo=FALSE}
+# # Alternatively, clusters can be transferred from Seurat object. This chunk is set to eval=FALSE by default.
+# 
+# # assign partitions
+# recreate.partitions <- c(rep(1, length(cds@colData@rownames))) # generates vector where the value 1 is repeated for the same length as the number of rows in cds@colData
+# names(recreate.partitions) <- cds@colData@rownames # creates a named vector where each element corresponds to a row in cds@colData
+# recreate.partitions <- as.factor(recreate.partitions) # converts vector into factor
+# cds@clusters@listData[["UMAP"]][["partitions"]] <- recreate.partitions # assigns the value of recreate.partitions to a "partitions" element inside the "UMAP" structure within the listData slot of the clusters object in cds
+# 
+# # assign cluster info
+# list.cluster <- seu@active.ident
+# cds@clusters@listData[["UMAP"]][["clusters"]] <- list.cluster
+# 
+# # assign umap coordinates
+# cds@int_colData@listData[["reducedDims"]]@listData[["UMAP"]] <- seu@reductions$umap@cell.embeddings
+```
+
+# Reduce dimensionality
+```{r dim-reduce, fig.width = 10, fig.height = 8}
+cds <- reduce_dimension(cds)
+plot_cells(cds,
+           label_groups_by_cluster = FALSE,
+           group_label_size = 4,
+           color_cells_by = "assigned_cell_type") + theme(legend.position = "right")
+
+marker_genes1 <- c("CD4",
+                   "GATA3",
+                   "ZBTB7B",
+                   "CD8A",
+                   "RUNX3")
+
+marker_genes2 <- c("CD34",
+                   "KIT",
+                   "RAG1",
+                   "CCR9",
+                   "MKI67")
+  
+marker_genes3 <- c("IL2RA",
+                   "LTB",
+                   "S1PR1",
+                   "SELL",
+                   "KLRB1")
+
+plot_cells(cds,
+           genes=marker_genes1,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)
+plot_cells(cds,
+           genes=marker_genes2,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)
+plot_cells(cds,
+           genes=marker_genes3,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE)
+```
+
+
+
+## Learn trajectory
+```{r trajectory-plot, results='hide', fig.width = 20, fig.height = 12}
+cds <- cluster_cells(cds, reduction_method = "UMAP")
+cds <- learn_graph(cds, use_partition = F)
+
+p1 <- plot_cells(cds,
+           color_cells_by = "assigned_cell_type",
+           label_groups_by_cluster = T,
+           label_branch_points = T, 
+           label_roots = T, 
+           label_leaves = F,
+           group_label_size = 6) + ggtitle("Trajectory analysis: Cell type annotations")
+
+p2 <- plot_cells(cds,
+           label_branch_points = T, 
+           label_roots = T, 
+           label_leaves = F,
+           group_label_size = 10) + ggtitle("Trajectory analysis: Monocle3 cluster numbers")
+p1 + p2
+```
+
+# Order cells in pseudotime
+To place cells in order, Monocle 3 must be told where the "beginning" of the biologic process is, done by choosing regions on the graph to mark as "roots" of the trajectory.
+```{r pseudotime-plot, fig.width = 12, fig.height = 8, message=FALSE, warning=FALSE}
+cds <- order_cells(cds, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == 10])) # use Monocle3 cluster numbers from figure above
+plot_cells(cds,
+           color_cells_by = "pseudotime",
+           label_branch_points = T,
+           graph_label_size=3,
+           label_roots = F,
+           label_leaves = F)
+```
+
+## Cells ordered by pseudotime
+```{r ordered-by-pseudotime, fig.width = 10}
+cds$monocle3_pseudotime <- pseudotime(cds)
+data.pseudo <- as.data.frame(colData(cds))
+ggplot(data.pseudo,
+       aes(monocle3_pseudotime,
+           reorder(assigned_cell_type, monocle3_pseudotime),
+           fill = assigned_cell_type)) + geom_boxplot()
+```
+
+# 3D trajectory
+```{r 3d-calculation, results='hide'}
+cds_3d <- reduce_dimension(cds, max_components = 3)
+cds_3d <- cluster_cells(cds_3d)
+cds_3d <- learn_graph(cds_3d)
+cds_3d <- order_cells(cds_3d, root_cells = colnames(cds[, clusters(cds) == 10]))
+```
+
+```{r 3D-plot}
+colors <- c(sapply(c("Blues", "Greens", "Reds", "Greys"), 
+                   function(x) brewer.pal(9, x)[c(2,6,9)]))
+
+plot_cells_3d(cds_3d,
+              color_cells_by = "assigned_cell_type",
+              color_palette = colors)
+```
+
+# Find genes that change as a function of pseudotime
+## Calculate Morans I values
+The `graph_test()` function uses a statistic from spatial autocorrelation analysis (Moran's *I*) to find genes that vary between groups of cells in UMAP space. A Moran's *I* value of 0 indicates no effect, while +1 indicates perfect positive autocorrelation and suggests that nearby cells have very similar values of a gene's expression. Significant values much less than zero are generally rare. Positive values indicate a gene is expressed in a focal region of the UMAP space (i.e., specific to one or more clusters).
+```{r moransI-calc, results='hide'}
+deg <- graph_test(cds, neighbor_graph = "principal_graph") # the data frame 'deg' will contain the Moran's I test results for each gene in cds.
+deg_ids <- row.names(subset(deg, q_value < 0.05))
+write.csv(deg, file="monocle3_pseudotimeGeneExpressionAnalysis.csv")
+```
+
+### Genes with Morans I values closest to 1:
+```{r moransI-table}
+deg %>% arrange(desc(morans_I)) %>% filter(status == "OK") %>% head(n=20)
+```
+
+```{r plot-top-morans, fig.height=14, fig.width=12}
+top_morans <- c("TOP2A",
+                "RPS28",
+                "PDE4D",
+                "SATB1",
+                "PTMA",
+                "CD79A",
+                "TCF12",
+                "DLA-64",
+                "IL23R")
+
+plot_cells(cds,
+           genes=top_morans,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE
+           )
+```
+
+## Assign genes to modules that have similar patterns of expression
+`find_gene_modules()` runs UMAP on genes (as opposed to cells) to group them based on their Moran's *I* value into modules using Louvain community analysis.
+### Repeat normalization and preprocessing steps on cds object
+This is required for find_gene_modules to work; see https://github.com/cole-trapnell-lab/monocle3/issues/623 and https://github.com/cole-trapnell-lab/monocle3/issues/655.
+```{r gene-modules-1, fig.height=8, fig.width=20}
+cds <- preprocess_cds(cds)
+cds <- reduce_dimension(cds)
+cds <- cluster_cells(cds, reduction_method = "UMAP", resolution = 1e-4)
+
+p1 <- plot_cells(cds,
+                 color_cells_by = "assigned_cell_type",
+                 label_groups_by_cluster = T,
+                 label_branch_points = T,
+                 show_trajectory_graph = F,
+                 group_label_size = 5) + ggtitle("Assigned Cell Types from Seurat Clusters") + theme(legend.position = "right")
+
+p2 <- plot_cells(cds, 
+                 group_label_size = 5, 
+                 show_trajectory_graph = FALSE) + ggtitle("Monocle3 Cluster IDs")
+p1+p2
+```
+
+### Associate gene modules with clusters
+Visualize which gene modules are expressed in which clusters.
+```{r gene-modules-2}
+gene_module_df <- find_gene_modules(cds[deg_ids, ], resolution=1e-2) # creates data frame that contains a row for each gene and identifies the module it belongs to
+
+# table aggregating expression of all genes in each module across all Monocle3 clusters
+m3_cell_group_df <- tibble::tibble(
+  cell=row.names(colData(cds)),
+  cell_group=clusters(cds)[colnames(cds)])
+agg_mat_m3 <- aggregate_gene_expression(cds, gene_module_df, m3_cell_group_df)
+row.names(agg_mat_m3) <- stringr::str_c("Module ", row.names(agg_mat_m3))
+colnames(agg_mat_m3) <- stringr::str_c("Cluster ", colnames(agg_mat_m3))
+
+# table aggregating expression of all genes in each module across all cell type assignments from our Seurat object
+ann_cell_group_df <- tibble::tibble(
+  cell = colnames(cds),
+  cell_group = colData(cds)$assigned_cell_type
+)
+agg_mat_ann <- aggregate_gene_expression(cds, gene_module_df, ann_cell_group_df)
+row.names(agg_mat_ann) <- stringr::str_c("Module ", row.names(agg_mat_ann))
+colnames(agg_mat_ann) <- stringr::str_c(unique(ann_cell_group_df$cell_group))
+```
+
+```{r gene-module-heatmaps-1, fig.height = 12, fig.width = 8}
+# heatmaps
+pheatmap::pheatmap(agg_mat_m3,
+                   cluster_rows = TRUE,
+                   cluster_cols = TRUE,
+                   scale = "column",
+                   clustering_method = "ward.D2",
+                   fontsize = 10,
+                   main = "Expression of Gene Modules Across Monocle3 Clusters")
+
+pheatmap::pheatmap(agg_mat_ann,
+                   cluster_rows = TRUE,
+                   cluster_cols = TRUE,
+                   scale = "column",
+                   clustering_method = "ward.D2",
+                   fontsize = 10,
+                   main = "Expression of Gene Modules Across Assigned Cell Types")
+```
+
+```{r gene-modules-heatmaps-2, fig.width=12, fig.height=8}
+plot_cells(cds,
+           genes=gene_module_df %>% filter(module %in% c(41,71,48,31,15,65)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE) + ggtitle("Gene Modules Overexpressed in ETP and DN Thymocytes")
+
+plot_cells(cds,
+           genes=gene_module_df %>% filter(module %in% c(52,37,46,8,6)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE) + ggtitle("Gene Modules Overexpressed in DP Thymocytes")
+
+plot_cells(cds,
+           genes=gene_module_df %>% filter(module %in% c(75,37,4,2,17,61)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE) + ggtitle("Gene Modules Overexpressed in SP Thymocytes")
+
+plot_cells(cds,
+           genes=gene_module_df %>% filter(module %in% c(42,62,74,57,22,2)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE) + ggtitle("Gene Modules Overexpressed in Naive T Cells")
+```
+
+```{r gene-modules-heatmap-3, fig.width=10, fig.height=8}
+plot_cells(cds,
+           genes=gene_module_df %>% filter(module %in% c(9,54,49,46)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE) + ggtitle("Gene Modules Overexpressed in Activated T Cells")
+```
+
+```{r gene-modules-heatmap-4, fig.width=8, fig.height=4}
+plot_cells(cds,
+           genes=gene_module_df %>% filter(module %in% c(4,38,35)),
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE) + ggtitle("Gene Modules Overexpressed in CD8 T / NK Cells")
+```
+
+
+```{r plot-genes-in-pseudotime, results='hide', fig.height=10, fig.width = 14}
+# select path
+cds <- cluster_cells(cds, reduction_method = "UMAP")
+cds <- learn_graph(cds, use_partition = F)
+cds <- order_cells(cds, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == 10]))
+early_genes <- c("DNTT", "TCF12", "RAG1")
+cds_early_subset <- cds[rowData(cds)$gene_short_name %in% early_genes]
+cds_early_subset <- order_cells(cds_early_subset, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == 10]))
+mature_genes <- c("LTB", "DLA-DRA", "DLA-64")
+cds_mature_subset <- cds[rowData(cds)$gene_short_name %in% mature_genes]
+cds_mature_subset <- order_cells(cds_mature_subset, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == 10]))
+
+plot_genes_in_pseudotime(cds_early_subset,
+                         color_cells_by="assigned_cell_type") +
+  theme(text=element_text(size=20)) + 
+  guides(color = guide_legend(override.aes = list(size=5)))
+
+plot_genes_in_pseudotime(cds_mature_subset,
+                         color_cells_by="assigned_cell_type") + 
+  theme(text=element_text(size=20)) + 
+  guides(color = guide_legend(override.aes = list(size=5)))
+
+```
+
+### Add pseudotime values to Seurat object
+```{r add-pseudotime-to-seu, fig.width = 20}
+seu$pseudotime <- pseudotime(cds)
+
+FeaturePlot(seu, features = "pseudotime")
+
+RidgePlot(seu,
+          features = c("FLT3", "GATA3", "RAG1", "DNTT", "CD44", "LTB"),
+          sort = T,
+          idents = c("ETP_and_DN_Thymocytes", "Proliferating_DP_Thymocytes_1", "DP_Thymocytes_2", "Early_SP_Thymocytes_2", "Naive_T_2", "Activated_T", "CD8_NK_1"))
+
+RidgePlot(seu,
+          features = c("DLA-64", "TCF12",  "CD4", "CD8A", "CCR9", "SELL"),
+          sort = T,
+          idents = c("ETP_and_DN_Thymocytes", "Proliferating_DP_Thymocytes_1", "DP_Thymocytes_2", "Early_SP_Thymocytes_2", "Naive_T_2", "Activated_T", "CD8_NK_1"))
+
+my_genes <- row.names(subset(fData(cds), gene_short_name %in% c("FLT3", "GATA3", "RAG1", "DNTT", "CD44", "LTB", "DLA-64", "TCF12",  "CD4", "CD8A", "CCR9", "SELL")))
+cds_subset <- cds[my_genes, ]
+plot_genes_in_pseudotime(cds_subset, color_cells_by = "monocle3_pseudotime")
+```
+
+# Citations
+```{r citations}
+sessionInfo()
+citation()
+```
+

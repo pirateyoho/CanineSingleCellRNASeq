@@ -1,0 +1,322 @@
+---
+title: "Gene Expression Across Pseudotime"
+author: "Eileen Owens"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      echo = TRUE,
+                      cache = TRUE,
+                      cache.lazy = FALSE,
+                      warning = FALSE,
+                      message = FALSE,
+                      keep_md = TRUE)
+```
+
+# Introduction
+The purpose of this script is to perform gene expression analysis following pseudotime trajectory analysis on single-cell RNA-seq data of T-cell populations within the normal canine thymus and lymph node, to track how gene expression changes as T cells progress through development.
+
+# Acknowledgements
+This script was adapted from the Monocle 3 documentation (https://cole-trapnell-lab.github.io/monocle3/docs/trajectories/)
+
+# Software
+```{r software-load, results="hide", message=FALSE}
+library(Seurat)
+library(knitr)
+library(tidyverse)
+library(patchwork)
+library(monocle3)
+library(SeuratWrappers)
+library(pheatmap)
+library(stringr)
+library(RColorBrewer)
+```
+
+# Data
+Input: A Seurat object of T-cell subsets from normal canine lymph node and thymus.
+```{r data-import, results='hide', message=FALSE}
+setwd("C:/Users/edlarsen/Documents/240828_scRNAseq/Pseudotime")
+seu <- readRDS(file = "C:/Users/edlarsen/Documents/240828_scRNAseq/T_Cells/IntegThymAndLN_Annotated.RData")
+
+# convert seurat to cds
+cds <- as.cell_data_set(seu, assay = "RNA")
+cds <- estimate_size_factors(cds)
+fData(cds)$gene_short_name <- rownames(fData(cds))
+
+# preprocessing and trajectory analysis with Monocle 3
+cds <- cluster_cells(cds, reduction_method = "UMAP")
+colData(cds)$assigned_cell_type <- as.character(clusters(cds))
+colData(cds)$assigned_cell_type <- dplyr::recode(colData(cds)$assigned_cell_type,
+                                                 "1" = "DP_Thymocytes_2",
+                                                 "2" = "DP_Thymocytes_1",
+                                                 "3" = "Naive_to_Activated_T",
+                                                 "4" = "Naive_T_2",
+                                                 "5" = "SP_Thym_and_Naive_T",
+                                                 "6" = "Naive_T_1",
+                                                 "7" = "Activated_T",
+                                                 "8" = "SP_Thym",
+                                                 "9" = "Proliferating_DP_Thym",
+                                                 "10" = "CD8_NK",
+                                                 "11" = "ETP_and_DN_Thym",
+                                                 "12" = "Late_SP_Thym")
+cds <- reduce_dimension(cds)
+cds <- cluster_cells(cds, reduction_method = "UMAP")
+cds <- learn_graph(cds, use_partition = F)
+cds <- order_cells(cds, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == 10]))
+cds$monocle3_pseudotime <- pseudotime(cds)
+```
+
+# Top markers of each cluster
+Plot the top gene for each cluster by *pseudo R-squared* value, a specificity metric ranging from 0 to 1.
+```{r topmarkers, fig.height=6, results = 'hide'}
+marker_test_res <- top_markers(cds, group_cells_by = 'assigned_cell_type', reference_cells = 1000)
+write.csv(marker_test_res, file = "topMarkers_Monocle3_clusters.csv")
+
+top_specific_markers <- marker_test_res %>%
+  # expressed by at least 85% of cells in the cluster
+  filter(fraction_expressing >= 0.85) %>%
+  group_by(cell_group) %>%
+  # top 3 genes by pseudo R-squared value for specificity
+  top_n(3, pseudo_R2)
+
+top_specific_markers_ids <- unique(top_specific_markers %>% pull(gene_id))
+
+plot_genes_by_group(cds,
+                    top_specific_markers_ids,
+                    group_cells_by = "assigned_cell_type",
+                    ordering_type = "cluster_row_col",
+                    max.size = 5)
+```
+
+**About these genes**:
+
+* *SKAP1* encodes a T-cell adapter protein that enables SH2 binding to promote TCR signaling.
+
+* *FYN* is an Src protein kinase that is essential for T-cell activation. (https://www.pnas.org/doi/full/10.1073/pnas.0406168101).
+
+* *ENSCAFG00000025128* in CanFam3.1 is an un-annotated gene in the region of the J genes of the TCR.
+
+* *PARP8* is one of a member of PARP enzymes involved in DNA repair.
+
+* *CBLB* promotes clearance of the TCR from the cell surface as a way to mitigate the T-cell response (https://pubmed.ncbi.nlm.nih.gov/12415267/).
+
+* *INPP4B* is an inhibitor of PI3K/AKT signaling.
+
+* *BACH2* is a transcription factor that regulates IL-2 expression (https://pubmed.ncbi.nlm.nih.gov/18769450/) and restrains terminal differentiation to enable generation of memory cells (https://pubmed.ncbi.nlm.nih.gov/27158840/).
+
+* *MT-CO2* is a mitochondrial gene encoding a subunit of cytochrome c oxidase.
+
+* *LTB* = lymphotoxin beta; expressed by activated T cells.
+
+* *DLA-64* is an MHC class I gene.
+
+* GIMAP family proteins play a variety of roles in T-cell development and survival. *GIMAP4* is expressed in developing T cells at the DN4 stage in response to pre*TCR signaling, is transiently downregulated in the DP stage, and re-expressed in SP thymocytes and peripheral T cells. (https://pubmed.ncbi.nlm.nih.gov/16569770/).
+
+* *RPL13* is a ribosomal protein shown to play a role in antiviral immune responses (https://pmc.ncbi.nlm.nih.gov/articles/PMC8173215/).
+
+* *CD79A* is supposed to be specific for B cells.
+
+* *RPS28* is a ribosomal protein that plays a role in MHC class I peptide generation.
+
+* *B2M* is a component of the MHC class I molecule.
+
+* *S100A8* is a gene associated with cytotoxic immune responses. It has also been shown to have regulatory activity against T cells by inhibiting B7 expression to reduce antigen presentation and negatively regulating leukocyte adhesion and transmigration (https://pubmed.ncbi.nlm.nih.gov/29942307/)
+
+* *ENSCAFG00000007461* is the CD8B gene.
+
+* *ARPP21* is a thymocyte-specific RNA-binding protein that provides TCR repertoire diversity by binding to the 3' UTR and promoting *RAG1* mRNA expression (https://pubmed.ncbi.nlm.nih.gov/38467629/).
+
+* *PDE4D* is a phosphodiesterase that regulates TCR signaling by attenuating the negative constraint of cAMP (https://pubmed.ncbi.nlm.nih.gov/17404263/). One study from the 90s found that PDE4 is the dominant PDE species involved in determining the metabolism of cAMP in thymocytes (https://pubmed.ncbi.nlm.nih.gov/8730511/).
+
+* The role of *PDE1C* in thymocytes/T cells is unclear.
+
+* *KNL1* functions as a scaffold for spindle assembly checkpoint proteins during mitosis.
+
+* *DIAPH3* is involved in actin remodeling for moderating cell movement and adhesion.
+
+* *MKI67* is a marker of cell proliferation.
+
+* *NDST3* is involved in heparan sulfate metabolism.
+
+* *CDK6* regulates the G1/S transition of the cell cycle.
+
+* *TFDP2* is a transcription factor that dimerizes with E2F for cell cycle progression.
+
+* *ENSCAFG00000041010* is a TCR gamma C region gene.
+
+* *ENSCAFG00000011098* is a TCR delta C region gene.
+
+* *BCL2* is an anti*apoptotic gene.
+
+
+# Find genes that change as a function of pseudotime
+## Calculate Morans I values
+The `graph_test()` function uses a statistic from spatial autocorrelation analysis (Moran's *I*) to find genes that vary between groups of cells in UMAP space. A Moran's *I* value of 0 indicates no effect, while +1 indicates perfect positive autocorrelation and suggests that nearby cells have very similar values of a gene's expression. Significant values much less than zero are generally rare. Positive values indicate a gene is expressed in a focal region of the UMAP space (i.e., specific to one or more clusters).
+```{r moransI-calc, results='hide'}
+deg <- graph_test(cds, neighbor_graph = "principal_graph") # the data frame 'deg' will contain the Moran's I test results for each gene in cds.
+deg_ids <- row.names(subset(deg, q_value < 0.05))
+write.csv(deg, file="monocle3_pseudotimeGeneExpressionAnalysis.csv")
+```
+
+## Top differentially expressed genes by Morans I values
+```{r deg-table}
+deg %>% arrange(desc(morans_test_statistic), desc(-q_value)) %>% filter(status == "OK") %>% head(n=20)
+```
+
+```{r plot-top-morans, fig.height=10, fig.width=12}
+top_morans_1 <- c("ARPP21",
+                "PDE1C",
+                "THEMIS",
+                "PDE4D",
+                "SLC7A11",
+                "MKI67")
+
+top_morans_2 <- c("NCR3",
+                  "DLA-64",
+                  "DBX2",
+                  "ASPM",
+                  "DLA-DRA",
+                  "ADAM12")
+
+top_morans_3 <- c("RIPOR2",
+                  "FCER1G",
+                  "KLRK1",
+                  "NAV3",
+                  "RHEX",
+                  "UBE2C",
+                  "FAU")
+
+plot_cells(cds,
+           genes=top_morans_1,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE
+           )
+
+plot_cells(cds,
+           genes=top_morans_2,
+           label_cell_groups=FALSE,
+           show_trajectory_graph=FALSE
+           )
+```
+
+## Plot genes across pseudotime
+### Genes that vary most significantly with pseudotime
+```{r plot-top-genes-in-pseudotime, results='hide', fig.height=10, fig.width = 14}
+# select path
+cds <- cluster_cells(cds, reduction_method = "UMAP")
+cds <- learn_graph(cds, use_partition = F)
+cds <- order_cells(cds, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == 10]))
+
+cds_subset_morans_1 <- cds[rowData(cds)$gene_short_name %in% top_morans_1]
+cds_subset_morans_1 <- order_cells(cds_subset_morans_1, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == 10]))
+plot_genes_in_pseudotime(cds_subset_morans_1, color_cells_by = "assigned_cell_type") + theme(text=element_text(size=20)) + guides(color = guide_legend(override.aes = list(size=5)))
+plot_genes_in_pseudotime(cds_subset_morans_1, color_cells_by = "monocle3_pseudotime") + theme(text=element_text(size=20)) + guides(color = guide_legend(override.aes = list(size=5)))
+
+cds_subset_morans_2 <- cds[rowData(cds)$gene_short_name %in% top_morans_2]
+cds_subset_morans_2 <- order_cells(cds_subset_morans_2, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == 10]))
+plot_genes_in_pseudotime(cds_subset_morans_2, color_cells_by = "assigned_cell_type") + theme(text=element_text(size=20)) + guides(color = guide_legend(override.aes = list(size=5)))
+plot_genes_in_pseudotime(cds_subset_morans_2, color_cells_by = "monocle3_pseudotime") + theme(text=element_text(size=20)) + guides(color = guide_legend(override.aes = list(size=5)))
+
+cds_subset_morans_3 <- cds[rowData(cds)$gene_short_name %in% top_morans_3]
+cds_subset_morans_3 <- order_cells(cds_subset_morans_3, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == 10]))
+plot_genes_in_pseudotime(cds_subset_morans_3, color_cells_by = "assigned_cell_type") + theme(text=element_text(size=20)) + guides(color = guide_legend(override.aes = list(size=5)))
+plot_genes_in_pseudotime(cds_subset_morans_3, color_cells_by = "monocle3_pseudotime") + theme(text=element_text(size=20)) + guides(color = guide_legend(override.aes = list(size=5)))
+```
+
+### Developmental genes of interest
+```{r plot-dev-genes-in-pseudotime, results='hide', fig.height=10, fig.width = 14}
+gene_list_1 <- c("DNTT", "TCF12", "RAG1", "FLT3", "CD1C")
+cds_subset_1 <- cds[rowData(cds)$gene_short_name %in% gene_list_1]
+cds_subset_1 <- order_cells(cds_subset_1, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == 10]))
+plot_genes_in_pseudotime(cds_subset_1, color_cells_by = "assigned_cell_type") + theme(text=element_text(size=20)) + guides(color = guide_legend(override.aes = list(size=5)))
+plot_genes_in_pseudotime(cds_subset_1, color_cells_by = "monocle3_pseudotime") + theme(text=element_text(size=20)) + guides(color = guide_legend(override.aes = list(size=5)))
+
+gene_list_2 <- c("LTB", "DLA-DRA", "DLA-64", "SELL", "B2M")
+cds_subset_2 <- cds[rowData(cds)$gene_short_name %in% gene_list_2]
+cds_subset_2 <- order_cells(cds_subset_2, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == 10]))
+plot_genes_in_pseudotime(cds_subset_2, color_cells_by = "assigned_cell_type") + theme(text=element_text(size=20)) + guides(color = guide_legend(override.aes = list(size=5)))
+plot_genes_in_pseudotime(cds_subset_2, color_cells_by = "monocle3_pseudotime") + theme(text=element_text(size=20)) + guides(color = guide_legend(override.aes = list(size=5)))
+
+gene_list_3 <- c("CCR9", "CD44", "GATA3", "NOTCH1", "SATB1")
+cds_subset_3 <- cds[rowData(cds)$gene_short_name %in% gene_list_3]
+cds_subset_3 <- order_cells(cds_subset_3, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == 10]))
+plot_genes_in_pseudotime(cds_subset_3, color_cells_by = "assigned_cell_type") + theme(text=element_text(size=20)) + guides(color = guide_legend(override.aes = list(size=5)))
+plot_genes_in_pseudotime(cds_subset_3, color_cells_by = "monocle3_pseudotime") + theme(text=element_text(size=20)) + guides(color = guide_legend(override.aes = list(size=5)))
+```
+
+## Assign genes to modules that have similar patterns of expression
+`find_gene_modules()` runs UMAP on genes (as opposed to cells) to group them based on their Moran's *I* value into modules using Louvain community analysis.
+
+### Repeat normalization and preprocessing steps on cds object
+This is required for find_gene_modules to work; see https://github.com/cole-trapnell-lab/monocle3/issues/623 and https://github.com/cole-trapnell-lab/monocle3/issues/655.
+```{r gene-modules-1, fig.height=8, fig.width=20}
+cds <- preprocess_cds(cds)
+cds <- reduce_dimension(cds)
+cds <- cluster_cells(cds, reduction_method = "UMAP", resolution = 1e-4)
+
+p1 <- plot_cells(cds,
+                 color_cells_by = "assigned_cell_type",
+                 label_groups_by_cluster = T,
+                 label_branch_points = T,
+                 show_trajectory_graph = F,
+                 group_label_size = 5) + ggtitle("Assigned Cell Types from Seurat Clusters") + theme(legend.position = "right")
+
+p2 <- plot_cells(cds, 
+                 group_label_size = 5, 
+                 show_trajectory_graph = FALSE) + ggtitle("Monocle3 Cluster IDs")
+p1+p2
+```
+
+### Associate gene modules with clusters
+Visualize which gene modules are expressed in which clusters.
+```{r gene-modules-2}
+gene_module_df <- find_gene_modules(cds[deg_ids, ], resolution=1e-2) # creates data frame that contains a row for each gene and identifies the module it belongs to
+write.csv(gene_module_df, file = "gene_module_df.csv")
+kable(head(gene_module_df, n = 20))
+
+# table aggregating expression of all genes in each module across all Monocle3 clusters
+m3_cell_group_df <- tibble::tibble(
+  cell=row.names(colData(cds)),
+  cell_group=clusters(cds)[colnames(cds)])
+agg_mat_m3 <- aggregate_gene_expression(cds, gene_module_df, m3_cell_group_df)
+row.names(agg_mat_m3) <- stringr::str_c("Module ", row.names(agg_mat_m3))
+colnames(agg_mat_m3) <- stringr::str_c("Cluster ", colnames(agg_mat_m3))
+write.csv(agg_mat_m3, file = "GeneModuleAssignment_Monocle3Clusters.csv")
+
+# table aggregating expression of all genes in each module across all cell type assignments from our Seurat object
+ann_cell_group_df <- tibble::tibble(
+  cell = colnames(cds),
+  cell_group = colData(cds)$assigned_cell_type
+)
+agg_mat_ann <- aggregate_gene_expression(cds, gene_module_df, ann_cell_group_df)
+row.names(agg_mat_ann) <- stringr::str_c("Module ", row.names(agg_mat_ann))
+colnames(agg_mat_ann) <- stringr::str_c(unique(ann_cell_group_df$cell_group))
+write.csv(agg_mat_ann, file = "GeneModuleAssignment_SeuratAnnotations.csv")
+```
+
+```{r gene-module-heatmaps-1, fig.height = 12, fig.width = 8}
+# heatmaps
+pheatmap::pheatmap(agg_mat_m3,
+                   cluster_rows = TRUE,
+                   cluster_cols = TRUE,
+                   scale = "column",
+                   clustering_method = "ward.D2",
+                   fontsize = 10,
+                   main = "Expression of Gene Modules Across Monocle3 Clusters")
+
+pheatmap::pheatmap(agg_mat_ann,
+                   cluster_rows = TRUE,
+                   cluster_cols = TRUE,
+                   scale = "column",
+                   clustering_method = "ward.D2",
+                   fontsize = 10,
+                   main = "Expression of Gene Modules Across Assigned Cell Types")
+```
+
+# Citations
+```{r citations}
+sessionInfo()
+citation()
+```
